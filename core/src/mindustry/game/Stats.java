@@ -22,6 +22,7 @@ public class Stats{
     /** Friendly buildings destroyed. */
     public int buildingsDestroyed;
 
+    //TODO fix
     public RankResult calculateRank(Sector zone, boolean launched){
         float score = 0;
 
@@ -39,7 +40,7 @@ public class Stats{
 
         //weigh used fractions
         float frac = 0f;
-        Array<Item> obtainable = Array.select(zone.data.resources, i -> i instanceof Item && ((Item)i).type == ItemType.material).as();
+        Seq<Item> obtainable = zone.save == null ? new Seq<>() : zone.save.meta.secinfo.resources.select(i -> i instanceof Item).as();
         for(Item item : obtainable){
             frac += Mathf.clamp((float)itemsDelivered.get(item, 0) / capacity) / (float)obtainable.size;
         }

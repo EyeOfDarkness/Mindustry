@@ -2,8 +2,10 @@ package mindustry.game;
 
 import arc.math.*;
 import arc.struct.*;
+import arc.util.ArcAnnotate.*;
 import arc.util.*;
 import mindustry.content.*;
+import mindustry.ctype.*;
 import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.blocks.storage.CoreBlock.*;
@@ -12,10 +14,13 @@ import mindustry.world.modules.*;
 import static mindustry.Vars.*;
 
 public class SectorInfo{
-    /** export window size in seconds */
-    private static final int exportWindow = 60;
+    /** average window size in samples */
+    private static final int valueWindow = 60;
     /** refresh period of export in ticks */
     private static final float refreshPeriod = 60;
+
+    /** Core input statistics. */
+    public ObjectMap<Item, ExportStat> production = new ObjectMap<>();
     /** Export statistics. */
     public ObjectMap<Item, ExportStat> export = new ObjectMap<>();
     /** Items stored in all cores. */
@@ -26,11 +31,25 @@ public class SectorInfo{
     public int storageCapacity = 0;
     /** Whether a core is available here. */
     public boolean hasCore = true;
+    /** Sector that was launched from. */
+    public @Nullable Sector origin;
+    /** Launch destination. */
+    public @Nullable Sector destination;
+    /** Resources known to occur at this sector. */
+    public Seq<UnlockableContent> resources = new Seq<>();
+    /** Time spent at this sector. Do not use unless you know what you're doing. */
+    public transient float internalTimeSpent;
 
     /** Counter refresh state. */
     private transient Interval time = new Interval();
     /** Core item storage to prevent spoofing. */
     private transient int[] lastCoreItems;
+
+    /** @return the real location items go when launched on this sector */
+    public Sector getRealDestination(){
+        //on multiplayer the destination is, by default, the first captured sector (basically random)
+        return !net.client() || destination != null ? destination : state.rules.sector.planet.sectors.find(Sector::hasBase);
+    }
 
     /** Updates export statistics. */
     public void handleItemExport(ItemStack stack){
@@ -56,7 +75,7 @@ public class SectorInfo{
         //update core items
         coreItems.clear();
 
-        CoreEntity entity = state.rules.defaultTeam.core();
+        CoreBuild entity = state.rules.defaultTeam.core();
 
         if(entity != null){
             ItemModule items = entity.items;
@@ -68,20 +87,31 @@ public class SectorInfo{
         hasCore = entity != null;
         bestCoreType = !hasCore ? Blocks.air : state.rules.defaultTeam.cores().max(e -> e.block.size).block;
         storageCapacity = entity != null ? entity.storageCapacity : 0;
+
+        //update sector's internal time spent counter1
+        state.rules.sector.setTimeSpent(internalTimeSpent);
     }
 
-    /** Update averages of various stats. */
+    /** Update averages of various stats, updates some special sector logic.
+     * Called every frame. */
     public void update(){
+        //updating in multiplayer as a client doesn't make sense
+        if(net.client()) return;
+
+        internalTimeSpent += Time.delta;
+
         //create last stored core items
         if(lastCoreItems == null){
             lastCoreItems = new int[content.items().size];
             updateCoreDeltas();
         }
 
+        CoreBuild ent = state.rules.defaultTeam.core();
+
         //refresh throughput
         if(time.get(refreshPeriod)){
-            CoreEntity ent = state.rules.defaultTeam.core();
 
+            //refresh export
             export.each((item, stat) -> {
                 //initialize stat after loading
                 if(!stat.loaded){
@@ -98,12 +128,29 @@ public class SectorInfo{
                 stat.mean = stat.means.rawMean();
             });
 
+            //refresh core items
+            for(Item item : content.items()){
+                ExportStat stat = production.get(item, ExportStat::new);
+                if(!stat.loaded){
+                    stat.means.fill(stat.mean);
+                    stat.loaded = true;
+                }
+
+                //get item delta
+                //TODO is preventing negative production a good idea?
+                int delta = Math.max((ent == null ? 0 : ent.items.get(item)) - lastCoreItems[item.id], 0);
+
+                //store means
+                stat.means.add(delta);
+                stat.mean = stat.means.rawMean();
+            }
+
             updateCoreDeltas();
         }
     }
 
     private void updateCoreDeltas(){
-        CoreEntity ent = state.rules.defaultTeam.core();
+        CoreBuild ent = state.rules.defaultTeam.core();
         for(int i = 0; i < lastCoreItems.length; i++){
             lastCoreItems[i] = ent == null ? 0 : ent.items.get(i);
         }
@@ -117,8 +164,14 @@ public class SectorInfo{
 
     public static class ExportStat{
         public transient float counter;
-        public transient WindowedMean means = new WindowedMean(exportWindow);
+        public transient WindowedMean means = new WindowedMean(valueWindow);
         public transient boolean loaded;
+
+        /** mean in terms of items produced per refresh rate (currently, per second) */
         public float mean;
+
+        public String toString(){
+            return mean + "";
+        }
     }
 }

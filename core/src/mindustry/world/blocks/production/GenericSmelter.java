@@ -16,7 +16,7 @@ public class GenericSmelter extends GenericCrafter{
         super(name);
     }
 
-    public class SmelterEntity extends GenericCrafterEntity{
+    public class SmelterBuild extends GenericCrafterBuild{
         @Override
         public void draw(){
             super.draw();
@@ -41,7 +41,7 @@ public class GenericSmelter extends GenericCrafter{
 
         @Override
         public void drawLight(){
-            Drawf.light(x, y, (60f + Mathf.absin(10f, 5f)) * warmup * size, flameColor, 0.65f);
+            Drawf.light(team, x, y, (60f + Mathf.absin(10f, 5f)) * warmup * size, flameColor, 0.65f);
         }
     }
 }

@@ -5,6 +5,7 @@ import arc.util.serialization.Json.*;
 import mindustry.content.*;
 import mindustry.ctype.*;
 import mindustry.gen.*;
+import mindustry.io.legacy.*;
 import mindustry.type.*;
 
 import static mindustry.Vars.content;
@@ -60,8 +61,8 @@ public class SpawnGroup implements Serializable{
      * Creates a unit, and assigns correct values based on this group's data.
      * This method does not add() the unit.
      */
-    public Unitc createUnit(Team team, int wave){
-        Unitc unit = type.create(team);
+    public Unit createUnit(Team team, int wave){
+        Unit unit = type.create(team);
 
         if(effect != null){
             unit.apply(effect, 999999f);
@@ -93,7 +94,9 @@ public class SpawnGroup implements Serializable{
 
     @Override
     public void read(Json json, JsonValue data){
-        type = content.getByName(ContentType.unit, data.getString("type", "dagger"));
+        String tname = data.getString("type", "dagger");
+
+        type = content.getByName(ContentType.unit, LegacyIO.unitMap.get(tname, tname));
         if(type == null) type = UnitTypes.dagger;
         begin = data.getInt("begin", 0);
         end = data.getInt("end", never);

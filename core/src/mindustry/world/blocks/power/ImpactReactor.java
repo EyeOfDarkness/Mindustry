@@ -43,11 +43,11 @@ public class ImpactReactor extends PowerGenerator{
     public void setBars(){
         super.setBars();
 
-        bars.add("poweroutput", entity -> new Bar(() ->
+        bars.add("poweroutput", (GeneratorBuild entity) -> new Bar(() ->
         Core.bundle.format("bar.poweroutput",
         Strings.fixed(Math.max(entity.getPowerProduction() - consumes.getPower().usage, 0) * 60 * entity.timeScale(), 1)),
         () -> Pal.powerBar,
-        () -> ((GeneratorEntity)entity).productionEfficiency));
+        () -> entity.productionEfficiency));
     }
 
     @Override
@@ -60,13 +60,12 @@ public class ImpactReactor extends PowerGenerator{
     }
 
     @Override
-    public TextureRegion[] generateIcons(){
-        return new TextureRegion[]{Core.atlas.find(name + "-bottom"), Core.atlas.find(name)};
+    public TextureRegion[] icons(){
+        return new TextureRegion[]{bottomRegion, region};
     }
 
-    public class FusionReactorEntity extends GeneratorEntity{
+    public class ImpactReactorBuild extends GeneratorBuild{
         public float warmup;
-
 
         @Override
         public void updateTile(){
@@ -115,8 +114,7 @@ public class ImpactReactor extends PowerGenerator{
 
         @Override
         public void drawLight(){
-            float fract = tile.<FusionReactorEntity>ent().warmup;
-            Drawf.light(x, y, (110f + Mathf.absin(5, 5f)) * fract, Tmp.c1.set(plasma2).lerp(plasma1, Mathf.absin(7f, 0.2f)), 0.8f * fract);
+            Drawf.light(team, x, y, (110f + Mathf.absin(5, 5f)) * warmup, Tmp.c1.set(plasma2).lerp(plasma1, Mathf.absin(7f, 0.2f)), 0.8f * warmup);
         }
 
         @Override
@@ -127,7 +125,7 @@ public class ImpactReactor extends PowerGenerator{
 
             Sounds.explosionbig.at(tile);
 
-            Effects.shake(6f, 16f, x, y);
+            Effect.shake(6f, 16f, x, y);
             Fx.impactShockwave.at(x, y);
             for(int i = 0; i < 6; i++){
                 Time.run(Mathf.random(80), () -> Fx.impactcloud.at(x, y));

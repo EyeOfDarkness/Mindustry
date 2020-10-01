@@ -8,6 +8,7 @@ import arc.util.io.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.gen.*;
 import mindustry.type.*;
+import mindustry.graphics.*;
 import mindustry.world.*;
 import mindustry.world.consumers.*;
 import mindustry.world.meta.*;
@@ -51,7 +52,7 @@ public class Separator extends Block{
         stats.add(BlockStat.productionTime, craftTime / 60f, StatUnit.seconds);
     }
 
-    public class SeparatorEntity extends TileEntity{
+    public class SeparatorBuild extends Building{
         public float progress;
         public float totalProgress;
         public float warmup;
@@ -71,18 +72,15 @@ public class Separator extends Block{
                     total -= items.get(stack.item);
                 }
             }
-            return total < itemCapacity;
+            return total < itemCapacity && enabled;
         }
 
         @Override
         public void draw(){
             super.draw();
 
-            Draw.color(liquids.current().color);
-            Draw.alpha(liquids.total() / liquidCapacity);
-            Draw.rect(liquidRegion, x, y);
+            Drawf.liquid(liquidRegion, x, y, liquids.total() / liquidCapacity, liquids.current().color);
 
-            Draw.reset();
             if(Core.atlas.isFound(spinnerRegion)){
                 Draw.rect(spinnerRegion, x, y, totalProgress * spinnerSpeed);
             }
@@ -130,7 +128,7 @@ public class Separator extends Block{
         }
 
         @Override
-        public boolean canDump(Tilec to, Item item){
+        public boolean canDump(Building to, Item item){
             return !consumes.itemFilters.get(item.id);
         }
 

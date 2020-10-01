@@ -8,7 +8,6 @@ import arc.util.ArcAnnotate.*;
 import arc.util.*;
 import arc.util.io.*;
 import mindustry.*;
-import mindustry.annotations.Annotations.*;
 import mindustry.entities.units.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
@@ -22,7 +21,6 @@ import mindustry.world.consumers.*;
 
 public class BlockForge extends PayloadAcceptor{
     public float buildSpeed = 0.4f;
-    public @Load(value = "@-out", fallback = "factory-out") TextureRegion outRegion;
 
     public BlockForge(String name){
         super(name);
@@ -35,38 +33,30 @@ public class BlockForge extends PayloadAcceptor{
         hasPower = true;
         rotate = true;
 
-        config(Block.class, (tile, block) -> ((BlockForgeEntity)tile).recipe = block);
+        config(Block.class, (BlockForgeBuild tile, Block block) -> tile.recipe = block);
 
-        consumes.add(new ConsumeItemDynamic(e -> {
-            BlockForgeEntity entity = (BlockForgeEntity)e;
-
-            if(entity.recipe != null){
-                return entity.recipe.requirements;
-            }
-
-            return ItemStack.empty;
-        }));
+        consumes.add(new ConsumeItemDynamic((BlockForgeBuild e) -> e.recipe != null ? e.recipe.requirements : ItemStack.empty));
     }
 
     @Override
     public void setBars(){
         super.setBars();
 
-        bars.add("progress", entity -> new Bar("bar.progress", Pal.ammo, () -> ((BlockForgeEntity)entity).progress));
+        bars.add("progress", entity -> new Bar("bar.progress", Pal.ammo, () -> ((BlockForgeBuild)entity).progress));
     }
 
     @Override
-    public void drawRequestRegion(BuildRequest req, Eachable<BuildRequest> list){
+    public void drawRequestRegion(BuildPlan req, Eachable<BuildPlan> list){
         Draw.rect(region, req.drawx(), req.drawy());
         Draw.rect(outRegion, req.drawx(), req.drawy(), req.rotation * 90);
     }
 
-    public class BlockForgeEntity extends PayloadAcceptorEntity<BlockPayload>{
+    public class BlockForgeBuild extends PayloadAcceptorBuild<BlockPayload>{
         public @Nullable Block recipe;
         public float progress, time, heat;
 
         @Override
-        public boolean acceptItem(Tilec source, Item item){
+        public boolean acceptItem(Building source, Item item){
             return items.get(item) < getMaximumAccepted(item);
         }
 
@@ -80,7 +70,7 @@ public class BlockForge extends PayloadAcceptor{
         }
 
         @Override
-        public boolean acceptPayload(Tilec source, Payload payload){
+        public boolean acceptPayload(Building source, Payload payload){
             return false;
         }
 
@@ -108,7 +98,7 @@ public class BlockForge extends PayloadAcceptor{
 
         @Override
         public void buildConfiguration(Table table){
-            Array<Block> blocks = Vars.content.blocks().select(b -> b.isVisible() && b.size <= 2);
+            Seq<Block> blocks = Vars.content.blocks().select(b -> b.isVisible() && b.size <= 2);
 
             ItemSelection.buildTable(table, blocks, () -> recipe, block -> recipe = block);
         }

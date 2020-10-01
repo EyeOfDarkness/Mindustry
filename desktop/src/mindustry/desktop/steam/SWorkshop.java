@@ -21,9 +21,9 @@ import static mindustry.Vars.*;
 public class SWorkshop implements SteamUGCCallback{
     public final SteamUGC ugc = new SteamUGC(this);
 
-    private ObjectMap<Class<? extends Publishable>, Array<Fi>> workshopFiles = new ObjectMap<>();
-    private ObjectMap<SteamUGCQuery, Cons2<Array<SteamUGCDetails>, SteamResult>> detailHandlers = new ObjectMap<>();
-    private Array<Cons<SteamPublishedFileID>> itemHandlers = new Array<>();
+    private ObjectMap<Class<? extends Publishable>, Seq<Fi>> workshopFiles = new ObjectMap<>();
+    private ObjectMap<SteamUGCQuery, Cons2<Seq<SteamUGCDetails>, SteamResult>> detailHandlers = new ObjectMap<>();
+    private Seq<Cons<SteamPublishedFileID>> itemHandlers = new Seq<>();
     private ObjectMap<SteamPublishedFileID, Runnable> updatedHandlers = new ObjectMap<>();
 
     public SWorkshop(){
@@ -32,7 +32,7 @@ public class SWorkshop implements SteamUGCCallback{
         ItemInstallInfo info = new ItemInstallInfo();
         ugc.getSubscribedItems(ids);
 
-        Array<Fi> folders = Array.with(ids).map(f -> {
+        Seq<Fi> folders = Seq.with(ids).map(f -> {
             ugc.getItemInstallInfo(f, info);
             return new Fi(info.getFolder());
         }).select(f -> f != null && f.list().length > 0);
@@ -50,8 +50,8 @@ public class SWorkshop implements SteamUGCCallback{
         });
     }
 
-    public Array<Fi> getWorkshopFiles(Class<? extends Publishable> type){
-        return workshopFiles.get(type, () -> new Array<>(0));
+    public Seq<Fi> getWorkshopFiles(Class<? extends Publishable> type){
+        return workshopFiles.get(type, () -> new Seq<>(0));
     }
 
     /** Publish a new item and submit an update for it.
@@ -96,36 +96,36 @@ public class SWorkshop implements SteamUGCCallback{
                 if(details.getResult() == SteamResult.OK){
                     if(details.getOwnerID().equals(SVars.user.user.getSteamID())){
 
-                        BaseDialog dialog = new BaseDialog("$workshop.info");
+                        BaseDialog dialog = new BaseDialog("@workshop.info");
                         dialog.setFillParent(false);
-                        dialog.cont.add("$workshop.menu").pad(20f);
+                        dialog.cont.add("@workshop.menu").pad(20f);
                         dialog.addCloseButton();
 
-                        dialog.buttons.button("$view.workshop", Icon.link, () -> {
+                        dialog.buttons.button("@view.workshop", Icon.link, () -> {
                             viewListingID(id);
                             dialog.hide();
                         }).size(210f, 64f);
 
-                        dialog.buttons.button("$workshop.update", Icon.up, () -> {
-                            new BaseDialog("$workshop.update"){{
+                        dialog.buttons.button("@workshop.update", Icon.up, () -> {
+                            new BaseDialog("@workshop.update"){{
                                 setFillParent(false);
-                                cont.margin(10).add("$changelog").padRight(6f);
+                                cont.margin(10).add("@changelog").padRight(6f);
                                 cont.row();
                                 TextArea field = cont.area("", t -> {}).size(500f, 160f).get();
                                 field.setMaxLength(400);
                                 buttons.defaults().size(120, 54).pad(4);
-                                buttons.button("$ok", () -> {
+                                buttons.button("@ok", () -> {
                                     if(!p.prePublish()){
                                         Log.info("Rejecting due to pre-publish.");
                                         return;
                                     }
 
-                                    ui.loadfrag.show("$publishing");
+                                    ui.loadfrag.show("@publishing");
                                     updateItem(p, field.getText().replace("\r", "\n"));
                                     dialog.hide();
                                     hide();
                                 });
-                                buttons.button("$cancel", this::hide);
+                                buttons.button("@cancel", this::hide);
                             }}.show();
 
                         }).size(210f, 64f);
@@ -135,7 +135,7 @@ public class SWorkshop implements SteamUGCCallback{
                     }
                 }else if(details.getResult() == SteamResult.FileNotFound){
                     p.removeSteamID();
-                    ui.showErrorMessage("$missing");
+                    ui.showErrorMessage("@missing");
                 }else{
                     ui.showErrorMessage(Core.bundle.format("workshop.error", details.getResult().name()));
                 }
@@ -158,7 +158,7 @@ public class SWorkshop implements SteamUGCCallback{
                 ugc.setItemDescription(h, p.steamDescription());
             }
 
-            Array<String> tags = p.extraTags();
+            Seq<String> tags = p.extraTags();
             tags.add(p.steamTag());
 
             ugc.setItemTitle(h, p.steamTitle());
@@ -177,25 +177,25 @@ public class SWorkshop implements SteamUGCCallback{
     }
 
     void showPublish(Cons<SteamPublishedFileID> published){
-        BaseDialog dialog = new BaseDialog("$confirm");
+        BaseDialog dialog = new BaseDialog("@confirm");
         dialog.setFillParent(false);
-        dialog.cont.add("$publish.confirm").width(600f).wrap();
+        dialog.cont.add("@publish.confirm").width(600f).wrap();
         dialog.addCloseButton();
-        dialog.buttons.button("$eula", Icon.link,
+        dialog.buttons.button("@eula", Icon.link,
             () -> SVars.net.friends.activateGameOverlayToWebPage("https://steamcommunity.com/sharedfiles/workshoplegalagreement"))
             .size(210f, 64f);
 
-        dialog.buttons.button("$ok", Icon.ok, () -> {
+        dialog.buttons.button("@ok", Icon.ok, () -> {
             Log.info("Accepted, publishing item...");
             itemHandlers.add(published);
             ugc.createItem(SVars.steamID, WorkshopFileType.Community);
-            ui.loadfrag.show("$publishing");
+            ui.loadfrag.show("@publishing");
             dialog.hide();
         }).size(170f, 64f);
         dialog.show();
     }
 
-    void query(SteamUGCQuery query, Cons2<Array<SteamUGCDetails>, SteamResult> handler){
+    void query(SteamUGCQuery query, Cons2<Seq<SteamUGCDetails>, SteamResult> handler){
         Log.info("POST QUERY " + query);
         detailHandlers.put(query, handler);
         ugc.sendQueryUGCRequest(query);
@@ -213,9 +213,9 @@ public class SWorkshop implements SteamUGCCallback{
 
             ui.loadfrag.setProgress(() -> {
                 ItemUpdateStatus status = ugc.getItemUpdateProgress(h, info);
-                ui.loadfrag.setText("$" + status.name().toLowerCase());
+                ui.loadfrag.setText("@" + status.name().toLowerCase());
                 if(status == ItemUpdateStatus.Invalid){
-                    ui.loadfrag.setText("$done");
+                    ui.loadfrag.setText("@done");
                     return 1f;
                 }
                 return (float)status.ordinal() / (float)ItemUpdateStatus.values().length;
@@ -241,7 +241,7 @@ public class SWorkshop implements SteamUGCCallback{
             Log.info("Query being handled...");
             if(numResultsReturned > 0){
                 Log.info("@ q results", numResultsReturned);
-                Array<SteamUGCDetails> details = new Array<>();
+                Seq<SteamUGCDetails> details = new Seq<>();
                 for(int i = 0; i < numResultsReturned; i++){
                     details.add(new SteamUGCDetails());
                     ugc.getQueryUGCResult(query, i, details.get(i));
@@ -249,7 +249,7 @@ public class SWorkshop implements SteamUGCCallback{
                 detailHandlers.get(query).get(details, result);
             }else{
                 Log.info("Nothing found.");
-                detailHandlers.get(query).get(new Array<>(), SteamResult.FileNotFound);
+                detailHandlers.get(query).get(new Seq<>(), SteamResult.FileNotFound);
             }
 
             detailHandlers.remove(query);

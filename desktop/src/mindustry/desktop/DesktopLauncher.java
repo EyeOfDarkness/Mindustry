@@ -22,19 +22,15 @@ import mindustry.net.Net.*;
 import mindustry.type.*;
 
 import java.io.*;
-import java.net.*;
-import java.util.*;
 
 import static mindustry.Vars.*;
 
 public class DesktopLauncher extends ClientLauncher{
     public final static String discordID = "610508934456934412";
-
-    boolean useDiscord = OS.is64Bit && !OS.hasProp("nodiscord"), loadError = false;
+    boolean useDiscord = OS.is64Bit && !OS.isARM && !OS.hasProp("nodiscord"), loadError = false;
     Throwable steamError;
 
     public static void main(String[] arg){
-
         try{
             Vars.loadLogger();
             new SdlApplication(new DesktopLauncher(arg), new SdlConfig(){{
@@ -53,18 +49,17 @@ public class DesktopLauncher extends ClientLauncher{
     public DesktopLauncher(String[] args){
         Version.init();
         boolean useSteam = Version.modifier.contains("steam");
-        testMobile = Array.with(args).contains("-testMobile");
+        testMobile = Seq.with(args).contains("-testMobile");
 
         if(useDiscord){
             try{
-                DiscordEventHandlers handlers = new DiscordEventHandlers();
-                DiscordRPC.INSTANCE.Discord_Initialize(discordID, handlers, true, "1127400");
+                DiscordRPC.INSTANCE.Discord_Initialize(discordID, null, true, "1127400");
                 Log.info("Initialized Discord rich presence.");
-
                 Runtime.getRuntime().addShutdownHook(new Thread(DiscordRPC.INSTANCE::Discord_Shutdown));
             }catch(Throwable t){
                 useDiscord = false;
-                Log.err("Failed to initialize discord.", t);
+                Log.err("Failed to initialize discord. Enable debug logging for details.");
+                Log.debug("Discord init error: \n@\n", Strings.getStackTrace(t));
             }
         }
 
@@ -115,7 +110,7 @@ public class DesktopLauncher extends ClientLauncher{
         loadError = true;
         Log.err(e);
         try(OutputStream s = new FileOutputStream(new File("steam-error-log-" + System.nanoTime() + ".txt"))){
-            String log = Strings.parseException(e, true);
+            String log = Strings.neatError(e);
             s.write(log.getBytes());
         }catch(Exception e2){
             Log.err(e2);
@@ -132,7 +127,7 @@ public class DesktopLauncher extends ClientLauncher{
         Events.on(ClientLoadEvent.class, event -> {
             player.name(SVars.net.friends.getPersonaName());
             Core.settings.defaults("name", SVars.net.friends.getPersonaName());
-            Core.settings.put("name", player.name());
+            Core.settings.put("name", player.name);
             //update callbacks
             Core.app.addListener(new ApplicationListener(){
                 @Override
@@ -175,11 +170,11 @@ public class DesktopLauncher extends ClientLauncher{
         String finalMessage = Strings.getFinalMesage(e);
         String total = Strings.getCauses(e).toString();
 
-        if(total.contains("Couldn't create window") || total.contains("OpenGL 2.0 or higher") || total.toLowerCase().contains("pixel format") || total.contains("GLEW")){
+        if(total.contains("Couldn't create window") || total.contains("OpenGL 2.0 or higher") || total.toLowerCase().contains("pixel format") || total.contains("GLEW")|| total.contains("unsupported combination of formats")){
 
             dialog.get(() -> message(
                 total.contains("Couldn't create window") ? "A graphics initialization error has occured! Try to update your graphics drivers:\n" + finalMessage :
-                            "Your graphics card does not support OpenGL 2.0 with the framebuffer_object extension!\n" +
+                            "Your graphics card does not support the right OpenGL features.\n" +
                                     "Try to update your graphics drivers. If this doesn't work, your computer may not support Mindustry.\n\n" +
                                     "Full message: " + finalMessage));
             badGPU = true;
@@ -196,7 +191,7 @@ public class DesktopLauncher extends ClientLauncher{
     }
 
     @Override
-    public Array<Fi> getWorkshopContent(Class<? extends Publishable> type){
+    public Seq<Fi> getWorkshopContent(Class<? extends Publishable> type){
         return !steam ? super.getWorkshopContent(type) : SVars.workshop.getWorkshopFiles(type);
     }
 
@@ -310,23 +305,7 @@ public class DesktopLauncher extends ClientLauncher{
             }
         }
 
-        try{
-            Enumeration<NetworkInterface> e = NetworkInterface.getNetworkInterfaces();
-            NetworkInterface out;
-            for(out = e.nextElement(); (out.getHardwareAddress() == null || out.isVirtual() || !validAddress(out.getHardwareAddress())) && e.hasMoreElements(); out = e.nextElement());
-
-            byte[] bytes = out.getHardwareAddress();
-            byte[] result = new byte[8];
-            System.arraycopy(bytes, 0, result, 0, bytes.length);
-
-            String str = new String(Base64Coder.encode(result));
-
-            if(str.equals("AAAAAAAAAOA=") || str.equals("AAAAAAAAAAA=")) throw new RuntimeException("Bad UUID.");
-
-            return str;
-        }catch(Exception e){
-            return super.getUUID();
-        }
+        return super.getUUID();
     }
 
     private static void message(String message){

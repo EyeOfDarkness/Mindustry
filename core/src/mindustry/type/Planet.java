@@ -1,6 +1,6 @@
 package mindustry.type;
 
-import arc.files.*;
+import arc.*;
 import arc.func.*;
 import arc.graphics.*;
 import arc.math.*;
@@ -9,16 +9,14 @@ import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.ArcAnnotate.*;
 import arc.util.*;
-import arc.util.io.*;
-import mindustry.*;
+import arc.util.noise.*;
 import mindustry.ctype.*;
 import mindustry.graphics.*;
 import mindustry.graphics.g3d.*;
 import mindustry.graphics.g3d.PlanetGrid.*;
 import mindustry.maps.generators.*;
-import mindustry.type.Sector.*;
 
-import static mindustry.Vars.universe;
+import static mindustry.Vars.*;
 
 public class Planet extends UnlockableContent{
     /** Default spacing between planet orbits in world units. */
@@ -34,7 +32,7 @@ public class Planet extends UnlockableContent{
     /** Generator that will make the planet. Can be null for planets that don't need to be landed on. */
     public @Nullable PlanetGenerator generator;
     /** Array of sectors; directly maps to tiles in the grid. */
-    public @NonNull Array<Sector> sectors;
+    public @NonNull Seq<Sector> sectors;
     /** Radius of this planet's sphere. Does not take into account sattelites. */
     public float radius;
     /** Orbital radius around the sun. Do not change unless you know exactly what you are doing.*/
@@ -49,6 +47,8 @@ public class Planet extends UnlockableContent{
     public float sectorApproxRadius;
     /** Whether this planet is tidally locked relative to its parent - see https://en.wikipedia.org/wiki/Tidal_locking */
     public boolean tidalLock = false;
+    /** The default starting sector displayed to the map dialog. */
+    public int startSector = 0;
     /** Whether the bloom render effect is enabled. */
     public boolean bloom = false;
     /** For suns, this is the color that shines on other planets. Does nothing for children. */
@@ -62,9 +62,9 @@ public class Planet extends UnlockableContent{
     /** The root parent of the whole solar system this planet is in. */
     public @NonNull Planet solarSystem;
     /** All planets orbiting this one, in ascending order of radius. */
-    public Array<Planet> children = new Array<>();
+    public Seq<Planet> children = new Seq<>();
     /** Sattelites orbiting this planet. */
-    public Array<Satellite> satellites = new Array<>();
+    public Seq<Satellite> satellites = new Seq<>();
     /** Loads the mesh. Clientside only. Defaults to a boring sphere mesh. */
     protected Prov<PlanetMesh> meshLoader = () -> new ShaderSphereMesh(this, Shaders.unlit, 2);
 
@@ -77,33 +77,14 @@ public class Planet extends UnlockableContent{
         if(sectorSize > 0){
             grid = PlanetGrid.create(sectorSize);
 
-            sectors = new Array<>(grid.tiles.length);
+            sectors = new Seq<>(grid.tiles.length);
             for(int i = 0; i < grid.tiles.length; i++){
-                sectors.add(new Sector(this, grid.tiles[i], new SectorData()));
+                sectors.add(new Sector(this, grid.tiles[i]));
             }
 
             sectorApproxRadius = sectors.first().tile.v.dst(sectors.first().tile.corners[0].v);
-
-            //read data for sectors
-            Fi data = Vars.tree.get("planets/" + name + ".dat");
-            if(data.exists()){
-                try{
-                    try(Reads read = data.reads()){
-                        short dsize = read.s();
-                        for(int i = 0; i < dsize; i++){
-                            sectors.get(i).data.read(read);
-                        }
-                    }
-                }catch(Throwable t){
-                    t.printStackTrace();
-                }
-            }
-
-            for(Sector sector : sectors){
-                sector.generate();
-            }
         }else{
-            sectors = new Array<>();
+            sectors = new Seq<>();
         }
 
         //total radius is initially just the radius
@@ -123,6 +104,14 @@ public class Planet extends UnlockableContent{
 
         //calculate solar system
         for(solarSystem = this; solarSystem.parent != null; solarSystem = solarSystem.parent);
+    }
+
+    public @Nullable Sector getLastSector(){
+        return sectors.get(Math.min(Core.settings.getInt(name + "-last-sector", startSector), sectors.size - 1));
+    }
+
+    public void setLastSector(Sector sector){
+        Core.settings.put(name + "-last-sector", sector.id);
     }
 
     public void preset(int index, SectorPreset preset){
@@ -183,6 +172,24 @@ public class Planet extends UnlockableContent{
         return in;
     }
 
+    /** Updates wave coverage of bases. */
+    public void updateBaseCoverage(){
+        for(Sector sector : sectors){
+            float sum = 1f;
+            for(Sector other : sector.inRange(2)){
+                if(other.generateEnemyBase){
+                    sum += 1f;
+                }
+            }
+
+            if(sector.hasEnemyBase()){
+                sum += 2f;
+            }
+
+            sector.baseCoverage = Mathf.clamp(sum / 5f);
+        }
+    }
+
     /** @return the supplied matrix with transformation applied. */
     public Mat3D getTransform(Mat3D mat){
         return mat.setToTranslation(position).rotate(Vec3.Y, getRotation());
@@ -191,6 +198,21 @@ public class Planet extends UnlockableContent{
     @Override
     public void load(){
         mesh = meshLoader.get();
+    }
+
+    @Override
+    public void init(){
+
+        if(generator != null){
+            Noise.setSeed(id + 1);
+
+            for(Sector sector : sectors){
+                generator.generateSector(sector);
+            }
+
+            updateBaseCoverage();
+        }
+
     }
 
     @Override

@@ -1,22 +1,17 @@
 package mindustry.editor;
 
 import arc.*;
-import arc.struct.IntSet;
-import arc.struct.IntSet.IntSetIterator;
-import arc.graphics.Color;
-import arc.graphics.Texture;
-import arc.graphics.g2d.Draw;
-import arc.graphics.g2d.TextureRegion;
-import arc.math.Mathf;
+import arc.graphics.*;
+import arc.graphics.g2d.*;
+import arc.math.*;
+import arc.struct.*;
 import arc.util.*;
-import mindustry.content.Blocks;
-import mindustry.game.EventType.*;
-import mindustry.game.Team;
-import mindustry.graphics.IndexedRenderer;
-import mindustry.world.Block;
-import mindustry.world.Tile;
+import mindustry.content.*;
+import mindustry.game.*;
+import mindustry.graphics.*;
+import mindustry.world.*;
 
-import static mindustry.Vars.tilesize;
+import static mindustry.Vars.*;
 
 public class MapRenderer implements Disposable{
     private static final int chunkSize = 64;
@@ -29,11 +24,7 @@ public class MapRenderer implements Disposable{
 
     public MapRenderer(MapEditor editor){
         this.editor = editor;
-        this.texture = Core.atlas.find("clear-editor").getTexture();
-
-        Events.on(ContentReloadEvent.class, e -> {
-            texture = Core.atlas.find("clear-editor").getTexture();
-        });
+        this.texture = Core.atlas.find("clear-editor").texture;
     }
 
     public void resize(int width, int height){
@@ -62,13 +53,7 @@ public class MapRenderer implements Disposable{
     public void draw(float tx, float ty, float tw, float th){
         Draw.flush();
 
-        IntSetIterator it = updates.iterator();
-        while(it.hasNext){
-            int i = it.next();
-            int x = i % width;
-            int y = i / width;
-            render(x, y);
-        }
+        updates.each(i -> render(i % width, i / width));
         updates.clear();
 
         updates.addAll(delayedUpdates);
@@ -125,18 +110,13 @@ public class MapRenderer implements Disposable{
         if(wall != Blocks.air && wall.synthetic()){
             region = !Core.atlas.isFound(wall.editorIcon()) || !center ? Core.atlas.find("clear-editor") : wall.editorIcon();
 
-            if(wall.rotate){
-                mesh.draw(idxWall, region,
-                wx * tilesize + wall.offset(), wy * tilesize + wall.offset(),
-                region.getWidth() * Draw.scl, region.getHeight() * Draw.scl, tile.rotdeg() - 90);
-            }else{
-                float width = region.getWidth() * Draw.scl, height = region.getHeight() * Draw.scl;
+            float width = region.width * Draw.scl, height = region.height * Draw.scl;
 
-                mesh.draw(idxWall, region,
-                wx * tilesize + wall.offset() + (tilesize - width) / 2f,
-                wy * tilesize + wall.offset() + (tilesize - height) / 2f,
-                width, height);
-            }
+            mesh.draw(idxWall, region,
+            wx * tilesize + wall.offset + (tilesize - width) / 2f,
+            wy * tilesize + wall.offset + (tilesize - height) / 2f,
+            width, height,
+            tile.build == null || !wall.rotate ? 0 : tile.build.rotdeg());
         }else{
             region = floor.editorVariantRegions()[Mathf.randomSeed(idxWall, 0, floor.editorVariantRegions().length - 1)];
 
@@ -150,15 +130,15 @@ public class MapRenderer implements Disposable{
             region = Core.atlas.find("block-border-editor");
         }else if(!wall.synthetic() && wall != Blocks.air && center){
             region = !Core.atlas.isFound(wall.editorIcon()) ? Core.atlas.find("clear-editor") : wall.editorIcon();
-            offsetX = tilesize / 2f - region.getWidth() / 2f * Draw.scl;
-            offsetY = tilesize / 2f - region.getHeight() / 2f * Draw.scl;
-        }else if(wall == Blocks.air){
+            offsetX = tilesize / 2f - region.width / 2f * Draw.scl;
+            offsetY = tilesize / 2f - region.height / 2f * Draw.scl;
+        }else if(wall == Blocks.air && !tile.overlay().isAir()){
             region = tile.overlay().editorVariantRegions()[Mathf.randomSeed(idxWall, 0, tile.overlay().editorVariantRegions().length - 1)];
         }else{
             region = Core.atlas.find("clear-editor");
         }
 
-        float width = region.getWidth() * Draw.scl, height = region.getHeight() * Draw.scl;
+        float width = region.width * Draw.scl, height = region.height * Draw.scl;
         if(!wall.synthetic() && wall != Blocks.air && !wall.isMultiblock()){
             offsetX = 0;
             offsetY = 0;

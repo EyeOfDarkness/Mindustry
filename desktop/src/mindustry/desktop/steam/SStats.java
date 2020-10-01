@@ -1,7 +1,6 @@
 package mindustry.desktop.steam;
 
 import arc.*;
-import arc.struct.*;
 import arc.util.*;
 import com.codedisaster.steamworks.*;
 import mindustry.*;
@@ -52,20 +51,21 @@ public class SStats implements SteamUserStatsCallback{
         this.updated = true;
     }
 
-    private void checkUpdate(){
+    void checkUpdate(){
         if(campaign()){
             SStat.maxUnitActive.max(Groups.unit.count(t -> t.team() == player.team()));
 
-            if(Groups.unit.count(u -> u.type() == UnitTypes.phantom && u.team() == player.team()) >= 10){
-                active10Phantoms.complete();
-            }
+            //TODO
+            //if(Groups.unit.count(u -> u.type() == UnitTypes.phantom && u.team() == player.team()) >= 10){
+           //     active10Phantoms.complete();
+            //}
 
             if(Groups.unit.count(u -> u.type() == UnitTypes.crawler && u.team() == player.team()) >= 50){
                 active50Crawlers.complete();
             }
 
-            for(Tilec entity : player.team().cores()){
-                if(!content.items().contains(i -> i.type == ItemType.material && entity.items().get(i) < entity.block().itemCapacity)){
+            for(Building entity : player.team().cores()){
+                if(!content.items().contains(i -> entity.items.get(i) < entity.block.itemCapacity)){
                     fillCoreAllCampaign.complete();
                     break;
                 }
@@ -79,21 +79,22 @@ public class SStats implements SteamUserStatsCallback{
                 if(e.unit.team() != Vars.player.team()){
                     SStat.unitsDestroyed.add();
 
-                    if(e.unit instanceof Unitc && ((Unitc)e.unit).isBoss()){
+                    if(e.unit instanceof Unit && ((Unit)e.unit).isBoss()){
                         SStat.bossesDefeated.add();
                     }
                 }
             }
         });
 
-        Events.on(ZoneConfigureCompleteEvent.class, e -> {
-            if(!content.sectors().contains(z -> !z.canConfigure())){
-                configAllZones.complete();
-            }
-        });
+        //TODO achievement invalid
+        //Events.on(ZoneConfigureCompleteEvent.class, e -> {
+            //if(!content.sectors().contains(z -> !z.canConfigure())){
+            //    configAllZones.complete();
+            //}
+        //});
 
-        Events.on(Trigger.newGame, () -> Core.app.post(() -> {
-            if(campaign() && player.closestCore() != null && player.closestCore().items().total() >= 10 * 1000){
+        Events.run(Trigger.newGame, () -> Core.app.post(() -> {
+            if(campaign() && player.core() != null && player.core().items.total() >= 10 * 1000){
                 drop10kitems.complete();
             }
         }));
@@ -108,7 +109,7 @@ public class SStats implements SteamUserStatsCallback{
             if(campaign() && e.unit != null && e.unit.isLocal() && !e.breaking){
                 SStat.blocksBuilt.add();
 
-                if(e.tile.block() == Blocks.router && e.tile.entity.proximity().contains(t -> t.block() == Blocks.router)){
+                if(e.tile.block() == Blocks.router && e.tile.build.proximity().contains(t -> t.block == Blocks.router)){
                     chainRouters.complete();
                 }
 
@@ -152,11 +153,11 @@ public class SStats implements SteamUserStatsCallback{
             }
         });
 
-        Events.on(Trigger.openWiki, openWiki::complete);
+        Events.run(Trigger.openWiki, openWiki::complete);
 
-        Events.on(Trigger.exclusionDeath, dieExclusion::complete);
+        Events.run(Trigger.exclusionDeath, dieExclusion::complete);
 
-        Events.on(Trigger.drown, drown::complete);
+        Events.run(Trigger.drown, drown::complete);
 
         trigger(Trigger.impactPower, powerupImpactReactor);
 
@@ -166,9 +167,9 @@ public class SStats implements SteamUserStatsCallback{
 
         trigger(Trigger.suicideBomb, suicideBomb);
 
-        Events.on(Trigger.enablePixelation, enablePixelation::complete);
+        Events.run(Trigger.enablePixelation, enablePixelation::complete);
 
-        Events.on(Trigger.thoriumReactorOverheat, () -> {
+        Events.run(Trigger.thoriumReactorOverheat, () -> {
             if(campaign()){
                 SStat.reactorsOverheated.add();
             }
@@ -195,13 +196,14 @@ public class SStats implements SteamUserStatsCallback{
             }
         });
 
-        Events.on(LaunchEvent.class, e -> {
-            if(state.rules.tutorial){
-                completeTutorial.complete();
-            }
-
-            SStat.timesLaunched.add();
-        });
+        //TODO
+        //Events.on(LaunchEvent.class, e -> {
+        //    if(state.rules.tutorial){
+        //        completeTutorial.complete();
+        //    }
+//
+        //    SStat.timesLaunched.add();
+        //});
 
         Events.on(LaunchItemEvent.class, e -> {
             SStat.itemsLaunched.add(e.stack.amount);
@@ -241,7 +243,7 @@ public class SStats implements SteamUserStatsCallback{
                     SStat.attacksWon.add();
                 }
 
-                RankResult result = state.stats.calculateRank(state.getSector(), state.launched);
+                RankResult result = state.stats.calculateRank(state.getSector(), true);
                 if(result.rank == Rank.S) earnSRank.complete();
                 if(result.rank == Rank.SS) earnSSRank.complete();
             }
@@ -263,7 +265,7 @@ public class SStats implements SteamUserStatsCallback{
     }
 
     private void trigger(Trigger trigger, SAchievement ach){
-        Events.on(trigger, () -> {
+        Events.run(trigger, () -> {
             if(campaign()){
                 ach.complete();
             }
@@ -283,9 +285,9 @@ public class SStats implements SteamUserStatsCallback{
         registerEvents();
 
         if(result != SteamResult.OK){
-            Log.err("Failed to recieve steam stats: @", result);
+            Log.err("Failed to receive steam stats: @", result);
         }else{
-            Log.info("Recieved steam stats.");
+            Log.info("Received steam stats.");
         }
     }
 

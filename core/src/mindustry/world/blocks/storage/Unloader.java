@@ -26,17 +26,14 @@ public class Unloader extends Block{
         configurable = true;
         saveConfig = true;
         itemCapacity = 0;
+        noUpdateDisabled = true;
 
-        config(Item.class, (tile, item) -> {
-            tile.items().clear();
-            ((UnloaderEntity)tile).sortItem = item;
-        });
-
-        configClear(tile -> ((UnloaderEntity)tile).sortItem = null);
+        config(Item.class, (UnloaderBuild tile, Item item) -> tile.sortItem = item);
+        configClear((UnloaderBuild tile) -> tile.sortItem = null);
     }
 
     @Override
-    public void drawRequestConfig(BuildRequest req, Eachable<BuildRequest> list){
+    public void drawRequestConfig(BuildPlan req, Eachable<BuildPlan> list){
         drawRequestConfigCenter(req, req.config, "unloader-center");
     }
 
@@ -46,28 +43,28 @@ public class Unloader extends Block{
         bars.remove("items");
     }
 
-    public class UnloaderEntity extends TileEntity{
+    public class UnloaderBuild extends Building{
         public Item sortItem = null;
-        public Tilec dumpingTo;
+        public Building dumpingTo;
 
         @Override
         public void updateTile(){
             if(timer(timerUnload, speed / timeScale())){
-                for(Tilec other : proximity){
-                    if(other.interactable(team) && other.block().unloadable && other.block().hasItems
-                        && ((sortItem == null && other.items().total() > 0) || (sortItem != null && other.items().has(sortItem)))){
+                for(Building other : proximity){
+                    if(other.interactable(team) && other.block.unloadable && other.block.hasItems
+                        && ((sortItem == null && other.items.total() > 0) || (sortItem != null && other.items.has(sortItem)))){
                         //make sure the item can't be dumped back into this block
                         dumpingTo = other;
 
                         //get item to be taken
-                        Item item = sortItem == null ? other.items().beginTake() : sortItem;
+                        Item item = sortItem == null ? other.items.beginTake() : sortItem;
 
                         //remove item if it's dumped correctly
                         if(put(item)){
                             if(sortItem == null){
-                                other.items().endTake(item);
+                                other.items.endTake(item);
                             }else{
-                                other.items().remove(item, 1);
+                                other.items.remove(item, 1);
                             }
                         }
                     }
@@ -86,11 +83,11 @@ public class Unloader extends Block{
 
         @Override
         public void buildConfiguration(Table table){
-            ItemSelection.buildTable(table, content.items(), () -> tile.<UnloaderEntity>ent().sortItem, item -> configure(item));
+            ItemSelection.buildTable(table, content.items(), () -> sortItem, this::configure);
         }
 
         @Override
-        public boolean onConfigureTileTapped(Tilec other){
+        public boolean onConfigureTileTapped(Building other){
             if(this == other){
                 deselect();
                 configure(null);
@@ -101,8 +98,8 @@ public class Unloader extends Block{
         }
 
         @Override
-        public boolean canDump(Tilec to, Item item){
-            return !(to.block() instanceof StorageBlock) && to != dumpingTo;
+        public boolean canDump(Building to, Item item){
+            return !(to.block instanceof StorageBlock) && to != dumpingTo;
         }
 
         @Override
@@ -111,15 +108,20 @@ public class Unloader extends Block{
         }
 
         @Override
+        public byte version(){
+            return 1;
+        }
+
+        @Override
         public void write(Writes write){
             super.write(write);
-            write.b(sortItem == null ? -1 : sortItem.id);
+            write.s(sortItem == null ? -1 : sortItem.id);
         }
 
         @Override
         public void read(Reads read, byte revision){
             super.read(read, revision);
-            byte id = read.b();
+            int id = revision == 1 ? read.s() : read.b();
             sortItem = id == -1 ? null : content.items().get(id);
         }
     }

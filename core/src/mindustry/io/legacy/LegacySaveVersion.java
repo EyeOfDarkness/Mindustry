@@ -54,33 +54,33 @@ public abstract class LegacySaveVersion extends SaveVersion{
                 if(block == null) block = Blocks.air;
 
                 //occupied by multiblock part
-                boolean occupied = tile.entity != null && !tile.isCenter() && (tile.entity.block() == block || block == Blocks.air);
+                boolean occupied = tile.build != null && !tile.isCenter() && (tile.build.block == block || block == Blocks.air);
 
                 //do not override occupied cells
                 if(!occupied){
                     tile.setBlock(block);
                 }
 
-                if(block.hasEntity()){
+                if(block.hasBuilding()){
                     try{
                         readChunk(stream, true, in -> {
                             byte version = in.readByte();
-                            //legacy impl of TileEntity#read()
-                            tile.entity.health(stream.readUnsignedShort());
+                            //legacy impl of Building#read()
+                            tile.build.health = stream.readUnsignedShort();
                             byte packedrot = stream.readByte();
                             byte team = Pack.leftByte(packedrot) == 8 ? stream.readByte() : Pack.leftByte(packedrot);
                             byte rotation = Pack.rightByte(packedrot);
 
                             tile.setTeam(Team.get(team));
-                            tile.rotation(rotation);
+                            tile.build.rotation = rotation;
 
-                            if(tile.entity.items() != null) tile.entity.items().read(Reads.get(stream));
-                            if(tile.entity.power() != null) tile.entity.power().read(Reads.get(stream));
-                            if(tile.entity.liquids() != null) tile.entity.liquids().read(Reads.get(stream));
-                            if(tile.entity.cons() != null) tile.entity.cons().read(Reads.get(stream));
+                            if(tile.build.items != null) tile.build.items.read(Reads.get(stream), true);
+                            if(tile.build.power != null) tile.build.power.read(Reads.get(stream), true);
+                            if(tile.build.liquids != null) tile.build.liquids.read(Reads.get(stream), true);
+                            if(tile.build.cons != null) tile.build.cons.read(Reads.get(stream), true);
 
                             //read only from subclasses!
-                            tile.entity.read(Reads.get(in), version);
+                            tile.build.read(Reads.get(in), version);
                         });
                     }catch(Throwable e){
                         throw new IOException("Failed to read tile entity of block: " + block, e);

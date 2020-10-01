@@ -2,7 +2,6 @@ package mindustry.ui.dialogs;
 
 import arc.*;
 import arc.graphics.g2d.*;
-import arc.math.*;
 import arc.scene.style.*;
 import arc.scene.ui.*;
 import arc.scene.ui.layout.*;
@@ -18,7 +17,7 @@ public class CustomGameDialog extends BaseDialog{
     private MapPlayDialog dialog = new MapPlayDialog();
 
     public CustomGameDialog(){
-        super("$customgame");
+        super("@customgame");
         addCloseButton();
         shown(this::setup);
         onResize(this::setup);
@@ -85,7 +84,7 @@ public class CustomGameDialog extends BaseDialog{
         }
 
         if(Vars.maps.all().size == 0){
-            maps.add("$maps.none").pad(50);
+            maps.add("@maps.none").pad(50);
         }
 
         cont.add(pane).uniformX();

@@ -14,7 +14,7 @@ import mindustry.world.*;
 import static mindustry.Vars.*;
 
 public abstract class BasicGenerator implements WorldGenerator{
-    protected static final ShortArray ints1 = new ShortArray(), ints2 = new ShortArray();
+    protected static final ShortSeq ints1 = new ShortSeq(), ints2 = new ShortSeq();
 
     protected Rand rand = new Rand();
 
@@ -37,63 +37,6 @@ public abstract class BasicGenerator implements WorldGenerator{
 
     protected void generate(){
 
-    }
-
-    //for visual testing only
-    public void cliffs2(){
-        for(Tile tile : tiles){
-            tile.setBlock(Blocks.air);
-            tile.cost = tile.floor().isLiquid ? 0 : (byte)(noise(tile.x, tile.y, 4, 0.5f, 90f, 1) * 5);
-        }
-
-        for(Tile tile : tiles){
-            if(tile.floor().isLiquid) continue;
-
-            int rotation = 0;
-            for(int i = 0; i < 8; i++){
-                Tile other = tiles.get(tile.x + Geometry.d8[i].x, tile.y + Geometry.d8[i].y);
-                if(other != null && other.cost < tile.cost){ //down slope
-                    rotation |= (1 << i);
-                }
-            }
-
-            tile.rotation(rotation);
-        }
-
-        for(Tile tile : tiles){
-            if(tile.rotation() != 0){
-                int rotation = tile.rotation();
-                tile.setBlock(Blocks.cliff);
-                tile.setOverlay(Blocks.air);
-                tile.rotation(rotation);
-            }
-        }
-    }
-
-    public void cliffs(){
-        for(Tile tile : tiles){
-            if(!tile.block().isStatic()) continue;
-
-            int rotation = 0;
-            for(int i = 0; i < 8; i++){
-                Tile other = tiles.get(tile.x + Geometry.d8[i].x, tile.y + Geometry.d8[i].y);
-                if(other != null && !other.block().isStatic()){
-                    rotation |= (1 << i);
-                }
-            }
-
-            if(rotation != 0){
-                tile.setBlock(Blocks.cliff);
-            }
-
-            tile.rotation(rotation);
-        }
-
-        for(Tile tile : tiles){
-            if(tile.block() != Blocks.cliff && tile.block().isStatic()){
-                tile.setBlock(Blocks.air);
-            }
-        }
     }
 
     public void median(int radius){
@@ -124,7 +67,7 @@ public abstract class BasicGenerator implements WorldGenerator{
         });
     }
 
-    public void ores(Array<Block> ores){
+    public void ores(Seq<Block> ores){
         pass((x, y) -> {
             if(floor.asFloor().isLiquid) return;
 
@@ -297,7 +240,7 @@ public abstract class BasicGenerator implements WorldGenerator{
         }
     }
 
-    public void brush(Array<Tile> path, int rad){
+    public void brush(Seq<Tile> path, int rad){
         path.each(tile -> erase(tile.x, tile.y, rad));
     }
 
@@ -313,7 +256,7 @@ public abstract class BasicGenerator implements WorldGenerator{
         }
     }
 
-    public Array<Tile> pathfind(int startX, int startY, int endX, int endY, TileHueristic th, DistanceHeuristic dh){
+    public Seq<Tile> pathfind(int startX, int startY, int endX, int endY, TileHueristic th, DistanceHeuristic dh){
         return Astar.pathfind(startX, startY, endX, endY, th, dh, tile -> world.getDarkness(tile.x, tile.y) <= 1f);
     }
 
@@ -331,18 +274,20 @@ public abstract class BasicGenerator implements WorldGenerator{
     }
 
     public void inverseFloodFill(Tile start){
-        IntArray arr = new IntArray();
+        GridBits used = new GridBits(tiles.width, tiles.height);
+
+        IntSeq arr = new IntSeq();
         arr.add(start.pos());
         while(!arr.isEmpty()){
             int i = arr.pop();
             int x = Point2.x(i), y = Point2.y(i);
-            tiles.getn(x, y).cost = 2;
+            used.set(x, y);
             for(Point2 point : Geometry.d4){
                 int newx = x + point.x, newy = y + point.y;
                 if(tiles.in(newx, newy)){
                     Tile child = tiles.getn(newx, newy);
-                    if(child.block() == Blocks.air && child.cost != 2){
-                        child.cost = 2;
+                    if(child.block() == Blocks.air && !used.get(child.x, child.y)){
+                        used.set(child.x, child.y);
                         arr.add(child.pos());
                     }
                 }
@@ -350,7 +295,7 @@ public abstract class BasicGenerator implements WorldGenerator{
         }
 
         for(Tile tile : tiles){
-            if(tile.cost != 2 && tile.block() == Blocks.air){
+            if(!used.get(tile.x, tile.y) && tile.block() == Blocks.air){
                 tile.setBlock(tile.floor().wall);
             }
         }

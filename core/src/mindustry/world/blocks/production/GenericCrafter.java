@@ -1,6 +1,5 @@
 package mindustry.world.blocks.production;
 
-import arc.func.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
 import arc.util.io.*;
@@ -10,6 +9,7 @@ import mindustry.gen.*;
 import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.consumers.*;
+import mindustry.world.draw.*;
 import mindustry.world.meta.*;
 
 public class GenericCrafter extends Block{
@@ -21,15 +21,16 @@ public class GenericCrafter extends Block{
     public Effect updateEffect = Fx.none;
     public float updateEffectChance = 0.04f;
 
-    public Cons<GenericCrafterEntity> drawer = null;
-    public Prov<TextureRegion[]> drawIcons = null;
+    public DrawBlock drawer = new DrawBlock();
+
+    //public Cons<GenericCrafterEntity> drawer = null;
+    //public Prov<TextureRegion[]> drawIcons = null;
 
     public GenericCrafter(String name){
         super(name);
         update = true;
         solid = true;
         hasItems = true;
-        health = 60;
         idleSound = Sounds.machine;
         sync = true;
         idleSoundVolume = 0.03f;
@@ -55,14 +56,21 @@ public class GenericCrafter extends Block{
     }
 
     @Override
+    public void load(){
+        super.load();
+
+        drawer.load(this);
+    }
+
+    @Override
     public void init(){
         outputsLiquid = outputLiquid != null;
         super.init();
     }
 
     @Override
-    public TextureRegion[] generateIcons(){
-        return drawIcons == null ? super.generateIcons() : drawIcons.get();
+    public TextureRegion[] icons(){
+        return drawer.icons(this);
     }
 
     @Override
@@ -70,18 +78,14 @@ public class GenericCrafter extends Block{
         return outputItem != null;
     }
 
-    public class GenericCrafterEntity extends TileEntity{
+    public class GenericCrafterBuild extends Building{
         public float progress;
         public float totalProgress;
         public float warmup;
 
         @Override
         public void draw(){
-            if(drawer == null){
-                super.draw();
-            }else{
-                drawer.get(this);
-            }
+            drawer.draw(this);
         }
 
         @Override
@@ -89,7 +93,7 @@ public class GenericCrafter extends Block{
             if(outputItem != null && items.get(outputItem.item) >= itemCapacity){
                 return false;
             }
-            return outputLiquid == null || !(liquids.get(outputLiquid.liquid) >= liquidCapacity - 0.001f);
+            return (outputLiquid == null || !(liquids.get(outputLiquid.liquid) >= liquidCapacity - 0.001f)) && enabled;
         }
 
         @Override
@@ -111,14 +115,12 @@ public class GenericCrafter extends Block{
                 consume();
 
                 if(outputItem != null){
-                    useContent(outputItem.item);
                     for(int i = 0; i < outputItem.amount; i++){
                         offload(outputItem.item);
                     }
                 }
 
                 if(outputLiquid != null){
-                    useContent(outputLiquid.liquid);
                     handleLiquid(this, outputLiquid.liquid, outputLiquid.amount);
                 }
 

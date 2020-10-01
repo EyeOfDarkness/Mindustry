@@ -2,27 +2,55 @@ package mindustry.tools;
 
 import arc.*;
 import arc.files.*;
+import arc.func.*;
 import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
+import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.*;
 import arc.util.noise.*;
 import mindustry.ctype.*;
+import mindustry.game.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.tools.ImagePacker.*;
 import mindustry.type.*;
 import mindustry.ui.*;
 import mindustry.world.*;
+import mindustry.world.blocks.*;
 import mindustry.world.blocks.environment.*;
+import mindustry.world.blocks.legacy.*;
 
 import static mindustry.Vars.*;
 
 public class Generators{
+    //used for changing colors in the UI - testing only
+    static final IntIntMap paletteMap = IntIntMap.with(
+    //empty for now
+    0x454545ff, 0x00000000,//0x32394bff,
+    0x00000099, 0x00000000//0x000000ff
+    );
 
     public static void generate(){
         ObjectMap<Block, Image> gens = new ObjectMap<>();
+
+        if(!paletteMap.isEmpty()){
+            ImagePacker.generate("uipalette", () -> {
+                Fi.get("../ui").walk(fi -> {
+                    if(!fi.extEquals("png")) return;
+
+                    Pixmap pix = new Pixmap(fi);
+                    pix.setBlending(Pixmap.Blending.sourceOver);
+                    pix.each((x, y) -> {
+                        int value = pix.getPixel(x, y);
+                        pix.draw(x, y, paletteMap.get(value, value));
+                    });
+
+                    fi.writePNG(pix);
+                });
+            });
+        }
 
         ImagePacker.generate("splashes", () -> {
             ArcNativesLoader.load();
@@ -99,14 +127,39 @@ public class Generators{
             Image colors = new Image(content.blocks().size, 1);
 
             for(Block block : content.blocks()){
+                if(block.isAir() || block instanceof ConstructBlock || block instanceof OreBlock || block instanceof LegacyBlock) continue;
+
+                block.load();
+
                 TextureRegion[] regions = block.getGeneratedIcons();
 
                 if(block instanceof Floor){
-                    block.load();
                     for(TextureRegion region : block.variantRegions()){
                         GenRegion gen = (GenRegion)region;
                         if(gen.path == null) continue;
                         gen.path.copyTo(Fi.get("../editor/editor-" + gen.path.name()));
+                    }
+                }
+
+                Image shardTeamTop = null;
+
+                if(block.teamRegion.found()){
+                    Image teamr = ImagePacker.get(block.teamRegion);
+
+                    for(Team team : Team.all){
+                        if(team.hasPalette){
+                            Image out = new Image(teamr.width, teamr.height);
+                            teamr.each((x, y) -> {
+                                int color = teamr.getColor(x, y).rgba8888();
+                                int index = color == 0xffffffff ? 0 : color == 0xdcc6c6ff ? 1 : color == 0x9d7f7fff ? 2 : -1;
+                                out.draw(x, y, index == -1 ? teamr.getColor(x, y) : team.palette[index]);
+                            });
+                            out.save(block.name + "-team-" + team.name);
+
+                            if(team == Team.sharded){
+                                shardTeamTop = out;
+                            }
+                        }
                     }
                 }
 
@@ -120,7 +173,7 @@ public class Generators{
                         int radius = 4;
                         GenRegion region = (GenRegion)regions[regions.length - 1];
                         Image base = ImagePacker.get(region);
-                        Image out = last = new Image(region.getWidth(), region.getHeight());
+                        Image out = last = new Image(region.width, region.height);
                         for(int x = 0; x < out.width; x++){
                             for(int y = 0; y < out.height; y++){
 
@@ -159,9 +212,14 @@ public class Generators{
                         }else{
                             image.draw(last);
                         }
+
+                        //draw shard (default team top) on top of first sprite
+                        if(i == 1 && shardTeamTop != null){
+                            image.draw(shardTeamTop);
+                        }
                     }
 
-                    if(!(regions.length == 1 && regions[0] == Core.atlas.find(block.name))){
+                    if(!(regions.length == 1 && regions[0] == Core.atlas.find(block.name) && shardTeamTop == null)){
                         image.save("block-" + block.name + "-full");
                     }
 
@@ -175,18 +233,22 @@ public class Generators{
 
                     boolean hasEmpty = false;
                     Color average = new Color();
+                    float asum = 0f;
                     for(int x = 0; x < image.width; x++){
                         for(int y = 0; y < image.height; y++){
                             Color color = image.getColor(x, y);
-                            average.r += color.r;
-                            average.g += color.g;
-                            average.b += color.b;
+                            average.r += color.r*color.a;
+                            average.g += color.g*color.a;
+                            average.b += color.b*color.a;
+                            asum += color.a;
                             if(color.a < 0.9f){
                                 hasEmpty = true;
                             }
                         }
                     }
-                    average.mul(1f / (image.width * image.height));
+
+                    average.mul(1f / asum);
+
                     if(block instanceof Floor){
                         average.mul(0.8f);
                     }else{
@@ -195,10 +257,8 @@ public class Generators{
                     //encode square sprite in alpha channel
                     average.a = hasEmpty ? 0.1f : 1f;
                     colors.draw(block.id, 0, average);
-                }catch(IllegalArgumentException e){
-                    Log.info("Skipping &ly'@'", block.name);
                 }catch(NullPointerException e){
-                    Log.err("Block &ly'@'&lr has an null region!");
+                    Log.err("Block &ly'@'&lr has an null region!", block);
                 }
             }
 
@@ -229,7 +289,7 @@ public class Generators{
         });
 
         ImagePacker.generate("item-icons", () -> {
-            for(UnlockableContent item : (Array<? extends UnlockableContent>)(Array)Array.withArrays(content.items(), content.liquids())){
+            for(UnlockableContent item : Seq.<UnlockableContent>withArrays(content.items(), content.liquids())){
                 Image base = ImagePacker.get(item.getContentType().name() + "-" + item.name);
                 for(Cicon icon : Cicon.scaled){
                     //if(icon.size == base.width) continue;
@@ -244,45 +304,125 @@ public class Generators{
             }
         });
 
-        ImagePacker.generate("unit-icons", () -> {
-            content.units().each(type -> {
+        ImagePacker.generate("unit-icons", () -> content.units().each(type -> {
+            if(type.isHidden()) return; //hidden units don't generate
+
+            ObjectSet<String> outlined = new ObjectSet<>();
+
+            try{
                 type.load();
-                try{
+                type.init();
 
-                    Image image = ImagePacker.get(type.region);
-
-                    if(type.constructor.get() instanceof Mechc){
-                        image.drawCenter(type.baseRegion);
-                        image.drawCenter(type.legRegion);
-                        image.drawCenter(type.legRegion, true, false);
+                Color outc = Pal.darkerMetal;
+                Func<Image, Image> outline = i -> i.outline(3, outc);
+                Cons<TextureRegion> outliner = t -> {
+                    if(t != null && t.found()){
+                        ImagePacker.replace(t, outline.get(ImagePacker.get(t)));
                     }
-                    image.draw(type.region);
+                };
 
-                    Image baseCell = ImagePacker.get(type.cellRegion);
-                    Image cell = new Image(type.cellRegion.getWidth(), type.cellRegion.getHeight());
-                    cell.each((x, y) -> cell.draw(x, y, baseCell.getColor(x, y).mul(Color.valueOf("ffa665"))));
-
-                    image.draw(cell, image.width / 2 - cell.width / 2, image.height / 2 - cell.height / 2);
-
-                    for(Weapon weapon : type.weapons){
-                        weapon.load();
-
-                        for(int i : (weapon.mirror ? Mathf.signs : Mathf.one)){
-                            i *= Mathf.sign(weapon.flipped);
-
-                            image.draw(weapon.region,
-                            (int)(i * weapon.x / Draw.scl + image.width / 2 - weapon.region.getWidth() / 2),
-                            (int)(-weapon.y / Draw.scl + image.height / 2f - weapon.region.getHeight() / 2f),
-                            i > 0, false);
-                        }
+                for(Weapon weapon : type.weapons){
+                    if(outlined.add(weapon.name) && ImagePacker.has(weapon.name)){
+                        outline.get(ImagePacker.get(weapon.name)).save(weapon.name + "-outline");
                     }
-
-                    image.save("unit-" + type.name + "-full");
-                }catch(IllegalArgumentException ignored){
-                    //skip
                 }
-            });
-        });
+
+                outliner.get(type.jointRegion);
+                outliner.get(type.footRegion);
+                outliner.get(type.legBaseRegion);
+                outliner.get(type.baseJointRegion);
+                if(type.constructor.get() instanceof Legsc) outliner.get(type.legRegion);
+
+                Image image = outline.get(ImagePacker.get(type.region));
+
+                image.save(type.name + "-outline");
+
+                //draw mech parts
+                if(type.constructor.get() instanceof Mechc){
+                    image.drawCenter(type.baseRegion);
+                    image.drawCenter(type.legRegion);
+                    image.drawCenter(type.legRegion, true, false);
+                    image.draw(type.region);
+                }
+
+                //draw outlines
+                for(Weapon weapon : type.weapons){
+                    weapon.load();
+
+                    image.draw(outline.get(ImagePacker.get(weapon.region)),
+                    (int)(weapon.x / Draw.scl + image.width / 2f - weapon.region.width / 2f),
+                    (int)(-weapon.y / Draw.scl + image.height / 2f - weapon.region.height / 2f),
+                    weapon.flipSprite, false);
+                }
+
+                //draw base region on top to mask weapons
+                image.draw(type.region);
+
+                Image baseCell = ImagePacker.get(type.cellRegion);
+                Image cell = new Image(type.cellRegion.width, type.cellRegion.height);
+                cell.each((x, y) -> cell.draw(x, y, baseCell.getColor(x, y).mul(Color.valueOf("ffa665"))));
+
+                image.draw(cell, image.width / 2 - cell.width / 2, image.height / 2 - cell.height / 2);
+
+                for(Weapon weapon : type.weapons){
+                    weapon.load();
+
+                    image.draw(weapon.top ? outline.get(ImagePacker.get(weapon.region)) : ImagePacker.get(weapon.region),
+                    (int)(weapon.x / Draw.scl + image.width / 2f - weapon.region.width / 2f),
+                    (int)(-weapon.y / Draw.scl + image.height / 2f - weapon.region.height / 2f),
+                    weapon.flipSprite, false);
+                }
+
+                image.save("unit-" + type.name + "-full");
+
+                Rand rand = new Rand();
+                rand.setSeed(type.name.hashCode());
+
+                //generate random wrecks
+
+                int splits = 3;
+                float degrees = rand.random(360f);
+                float offsetRange = Math.max(image.width, image.height) * 0.15f;
+                Vec2 offset = new Vec2(1, 1).rotate(rand.random(360f)).setLength(rand.random(0, offsetRange)).add(image.width/2f, image.height/2f);
+
+                Image[] wrecks = new Image[splits];
+                for(int i = 0; i < wrecks.length; i++){
+                    wrecks[i] = new Image(image.width, image.height);
+                }
+
+                RidgedPerlin r = new RidgedPerlin(1, 3);
+                VoronoiNoise vn = new VoronoiNoise(type.id, true);
+
+                image.each((x, y) -> {
+                    //add darker cracks on top
+                    boolean rValue = Math.max(r.getValue(x, y, 1f / (20f + image.width/8f)), 0) > 0.16f;
+                    //cut out random chunks with voronoi
+                    boolean vval = vn.noise(x, y, 1f / (14f + image.width/40f)) > 0.47;
+
+                    float dst =  offset.dst(x, y);
+                    //distort edges with random noise
+                    float noise = (float)Noise.rawNoise(dst / (9f + image.width/70f)) * (60 + image.width/30f);
+                    int section = (int)Mathf.clamp(Mathf.mod(offset.angleTo(x, y) + noise + degrees, 360f) / 360f * splits, 0, splits - 1);
+                    if(!vval) wrecks[section].draw(x, y, image.getColor(x, y).mul(rValue ? 0.7f : 1f));
+                });
+
+                for(int i = 0; i < wrecks.length; i++){
+                    wrecks[i].save(type.name + "-wreck" + i);
+                }
+
+                for(Cicon icon : Cicon.scaled){
+                    Vec2 size = Scaling.fit.apply(image.width, image.height, icon.size, icon.size);
+                    Image scaled = new Image((int)size.x, (int)size.y);
+
+                    scaled.drawScaled(image);
+                    scaled.save("../ui/unit-" + type.name + "-" + icon.name());
+                }
+
+            }catch(IllegalArgumentException e){
+                Log.err("WARNING: Skipping unit @: @", type.name, e.getMessage());
+            }
+
+        }));
 
         ImagePacker.generate("ore-icons", () -> {
             content.blocks().<OreBlock>each(b -> b instanceof OreBlock, ore -> {
@@ -329,7 +469,7 @@ public class Generators{
                 }
 
                 try{
-                    Image image = gens.get(floor, ImagePacker.get(floor.generateIcons()[0]));
+                    Image image = gens.get(floor, ImagePacker.get(floor.getGeneratedIcons()[0]));
                     Image edge = ImagePacker.get("edge-stencil");
                     Image result = new Image(edge.width, edge.height);
 

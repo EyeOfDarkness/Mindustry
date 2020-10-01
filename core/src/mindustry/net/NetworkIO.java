@@ -18,7 +18,7 @@ import static mindustry.Vars.*;
 
 public class NetworkIO{
 
-    public static void writeWorld(Playerc player, OutputStream os){
+    public static void writeWorld(Player player, OutputStream os){
 
         try(DataOutputStream stream = new DataOutputStream(os)){
             stream.writeUTF(JsonIO.write(state.rules));
@@ -27,7 +27,7 @@ public class NetworkIO{
             stream.writeInt(state.wave);
             stream.writeFloat(state.wavetime);
 
-            stream.writeInt(player.id());
+            stream.writeInt(player.id);
             player.write(Writes.get(stream));
 
             SaveIO.getSaveWriter().writeContentHeader(stream);
@@ -47,11 +47,11 @@ public class NetworkIO{
             state.wave = stream.readInt();
             state.wavetime = stream.readFloat();
 
-            Groups.all.clear();
+            Groups.clear();
             int id = stream.readInt();
             player.reset();
             player.read(Reads.get(stream));
-            player.id(id);
+            player.id = id;
             player.add();
 
             SaveIO.getSaveWriter().readContentHeader(stream);
@@ -64,14 +64,14 @@ public class NetworkIO{
     }
 
     public static ByteBuffer writeServerData(){
-        String name = (headless ? Config.name.string() : player.name());
+        String name = (headless ? Config.name.string() : player.name);
         String description = headless && !Config.desc.string().equals("off") ? Config.desc.string() : "";
         String map = state.map.name();
 
-        ByteBuffer buffer = ByteBuffer.allocate(512);
+        ByteBuffer buffer = ByteBuffer.allocate(500);
 
         writeString(buffer, name, 100);
-        writeString(buffer, map);
+        writeString(buffer, map, 64);
 
         buffer.putInt(Core.settings.getInt("totalPlayers", Groups.player.size()));
         buffer.putInt(state.wave);
@@ -82,10 +82,13 @@ public class NetworkIO{
         buffer.putInt(netServer.admins.getPlayerLimit());
 
         writeString(buffer, description, 100);
+        if(state.rules.modeName != null){
+            writeString(buffer, state.rules.modeName, 50);
+        }
         return buffer;
     }
 
-    public static Host readServerData(String hostAddress, ByteBuffer buffer){
+    public static Host readServerData(int ping, String hostAddress, ByteBuffer buffer){
         String host = readString(buffer);
         String map = readString(buffer);
         int players = buffer.getInt();
@@ -95,8 +98,9 @@ public class NetworkIO{
         Gamemode gamemode = Gamemode.all[buffer.get()];
         int limit = buffer.getInt();
         String description = readString(buffer);
+        String modeName = readString(buffer);
 
-        return new Host(host, hostAddress, map, wave, players, version, vertype, gamemode, limit, description);
+        return new Host(ping, host, hostAddress, map, wave, players, version, vertype, gamemode, limit, description, modeName.isEmpty() ? null : modeName);
     }
 
     private static void writeString(ByteBuffer buffer, String string, int maxlen){

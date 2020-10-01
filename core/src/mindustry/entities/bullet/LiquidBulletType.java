@@ -14,7 +14,7 @@ import static mindustry.Vars.*;
 
 public class LiquidBulletType extends BulletType{
     public @NonNull Liquid liquid;
-    public float puddleSize = 5f;
+    public float puddleSize = 6f;
 
     public LiquidBulletType(@Nullable Liquid liquid){
         super(3.5f, 0);
@@ -24,8 +24,9 @@ public class LiquidBulletType extends BulletType{
             this.status = liquid.effect;
         }
 
-        lifetime = 74f;
-        statusDuration = 90f;
+        ammoMultiplier = 1f;
+        lifetime = 34f;
+        statusDuration = 60f * 2f;
         despawnEffect = Fx.none;
         hitEffect = Fx.hitLiquid;
         smokeEffect = Fx.none;
@@ -44,11 +45,11 @@ public class LiquidBulletType extends BulletType{
     }
 
     @Override
-    public void update(Bulletc b){
+    public void update(Bullet b){
         super.update(b);
 
         if(liquid.canExtinguish()){
-            Tile tile = world.tileWorld(b.x(), b.y());
+            Tile tile = world.tileWorld(b.x, b.y);
             if(tile != null && Fires.has(tile.x, tile.y)){
                 Fires.extinguish(tile, 100f);
                 b.remove();
@@ -58,26 +59,27 @@ public class LiquidBulletType extends BulletType{
     }
 
     @Override
-    public void draw(Bulletc b){
+    public void draw(Bullet b){
         Draw.color(liquid.color, Color.white, b.fout() / 100f);
 
-        Fill.circle(b.x(), b.y(), 3f);
+        Fill.circle(b.x, b.y, puddleSize / 2);
     }
 
     @Override
-    public void despawned(Bulletc b){
+    public void despawned(Bullet b){
         super.despawned(b);
 
-        hit(b, b.x(), b.y());
+        //don't create liquids when the projectile despawns
+        hitEffect.at(b.x, b.y, b.rotation(), liquid.color);
     }
 
     @Override
-    public void hit(Bulletc b, float hitx, float hity){
+    public void hit(Bullet b, float hitx, float hity){
         hitEffect.at(hitx, hity, liquid.color);
         Puddles.deposit(world.tileWorld(hitx, hity), liquid, puddleSize);
 
         if(liquid.temperature <= 0.5f && liquid.flammability < 0.3f){
-            float intensity = 400f;
+            float intensity = 400f * puddleSize/6f;
             Fires.extinguish(world.tileWorld(hitx, hity), intensity);
             for(Point2 p : Geometry.d4){
                 Fires.extinguish(world.tileWorld(hitx + p.x * tilesize, hity + p.y * tilesize), intensity);

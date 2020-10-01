@@ -28,12 +28,12 @@ public class Sorter extends Block{
         unloadable = false;
         saveConfig = true;
 
-        config(Item.class, (tile, item) -> ((SorterEntity)tile).sortItem = item);
-        configClear(tile -> ((SorterEntity)tile).sortItem = null);
+        config(Item.class, (SorterBuild tile, Item item) -> tile.sortItem = item);
+        configClear((SorterBuild tile) -> tile.sortItem = null);
     }
 
     @Override
-    public void drawRequestConfig(BuildRequest req, Eachable<BuildRequest> list){
+    public void drawRequestConfig(BuildPlan req, Eachable<BuildPlan> list){
         drawRequestConfigCenter(req, req.config, "center");
     }
 
@@ -44,14 +44,14 @@ public class Sorter extends Block{
 
     @Override
     public int minimapColor(Tile tile){
-        return tile.<SorterEntity>ent().sortItem == null ? 0 : tile.<SorterEntity>ent().sortItem.color.rgba();
+        return tile.<SorterBuild>bc().sortItem == null ? 0 : tile.<SorterBuild>bc().sortItem.color.rgba();
     }
 
-    public class SorterEntity extends TileEntity{
-        @Nullable Item sortItem;
+    public class SorterBuild extends Building{
+        public @Nullable Item sortItem;
 
         @Override
-        public void configured(Playerc player, Object value){
+        public void configured(Unit player, Object value){
             super.configured(player, value);
 
             if(!headless){
@@ -73,41 +73,41 @@ public class Sorter extends Block{
         }
 
         @Override
-        public boolean acceptItem(Tilec source, Item item){
-            Tilec to = getTileTarget(item, source, false);
+        public boolean acceptItem(Building source, Item item){
+            Building to = getTileTarget(item, source, false);
 
-            return to != null && to.acceptItem(this, item) && to.team() == team;
+            return to != null && to.acceptItem(this, item) && to.team == team;
         }
 
         @Override
-        public void handleItem(Tilec source, Item item){
-            Tilec to = getTileTarget(item, source, true);
+        public void handleItem(Building source, Item item){
+            Building to = getTileTarget(item, source, true);
 
             to.handleItem(this, item);
         }
 
-        boolean isSame(Tilec other){
-            //uncomment comment below to prevent sorter/gate chaining (hacky)
-            return other != null && (other.block() instanceof Sorter/* || other.block() instanceof OverflowGate */);
+        public boolean isSame(Building other){
+            // comment code below to allow sorter/gate chaining
+            return other != null && other.block.instantTransfer;
         }
 
-        Tilec getTileTarget(Item item, Tilec source, boolean flip){
+        public Building getTileTarget(Item item, Building source, boolean flip){
             int dir = source.relativeTo(tile.x, tile.y);
             if(dir == -1) return null;
-            Tilec to;
+            Building to;
 
-            if((item == sortItem) != invert){
+            if(((item == sortItem) != invert) == enabled){
                 //prevent 3-chains
                 if(isSame(source) && isSame(nearby(dir))){
                     return null;
                 }
                 to = nearby(dir);
             }else{
-                Tilec a = nearby(Mathf.mod(dir - 1, 4));
-                Tilec b = nearby(Mathf.mod(dir + 1, 4));
-                boolean ac = a != null && !(a.block().instantTransfer && source.block().instantTransfer) &&
+                Building a = nearby(Mathf.mod(dir - 1, 4));
+                Building b = nearby(Mathf.mod(dir + 1, 4));
+                boolean ac = a != null && !(a.block.instantTransfer && source.block.instantTransfer) &&
                 a.acceptItem(this, item);
-                boolean bc = b != null && !(b.block().instantTransfer && source.block().instantTransfer) &&
+                boolean bc = b != null && !(b.block.instantTransfer && source.block.instantTransfer) &&
                 b.acceptItem(this, item);
 
                 if(ac && !bc){
@@ -117,12 +117,12 @@ public class Sorter extends Block{
                 }else if(!bc){
                     return null;
                 }else{
-                    if(rotation() == 0){
+                    if(rotation == 0){
                         to = a;
-                        if(flip) rotation((byte)1);
+                        if(flip) this.rotation = (byte)1;
                     }else{
                         to = b;
-                        if(flip) rotation((byte)0);
+                        if(flip) this.rotation = (byte)0;
                     }
                 }
             }
@@ -132,11 +132,11 @@ public class Sorter extends Block{
 
         @Override
         public void buildConfiguration(Table table){
-            ItemSelection.buildTable(table, content.items(), () -> sortItem, item -> configure(item));
+            ItemSelection.buildTable(table, content.items(), () -> sortItem, this::configure);
         }
 
         @Override
-        public boolean onConfigureTileTapped(Tilec other){
+        public boolean onConfigureTileTapped(Building other){
             if(this == other){
                 deselect();
                 configure(null);

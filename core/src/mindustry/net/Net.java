@@ -1,10 +1,11 @@
 package mindustry.net;
 
 import arc.*;
-import arc.struct.*;
 import arc.func.*;
-import arc.util.*;
+import arc.net.*;
+import arc.struct.*;
 import arc.util.ArcAnnotate.*;
+import arc.util.*;
 import arc.util.pooling.*;
 import mindustry.gen.*;
 import mindustry.net.Packets.*;
@@ -13,6 +14,7 @@ import net.jpountz.lz4.*;
 
 import java.io.*;
 import java.nio.*;
+import java.nio.channels.*;
 
 import static mindustry.Vars.*;
 
@@ -23,7 +25,7 @@ public class Net{
     private boolean clientLoaded;
     private @Nullable StreamBuilder currentStream;
 
-    private final Array<Object> packetQueue = new Array<>();
+    private final Seq<Object> packetQueue = new Seq<>();
     private final ObjectMap<Class<?>, Cons> clientListeners = new ObjectMap<>();
     private final ObjectMap<Class<?>, Cons2<NetConnection, Object>> serverListeners = new ObjectMap<>();
     private final IntMap<StreamBuilder> streams = new IntMap<>();
@@ -34,6 +36,16 @@ public class Net{
 
     public Net(NetProvider provider){
         this.provider = provider;
+    }
+
+    public void handleException(Throwable e){
+        if(e instanceof ArcNetException){
+            Core.app.post(() -> showError(new IOException("mismatch")));
+        }else if(e instanceof ClosedChannelException){
+            Core.app.post(() -> showError(new IOException("alreadyconnected")));
+        }else{
+            Core.app.post(() -> showError(e));
+        }
     }
 
     /** Display a network error. Call on the graphics thread. */
@@ -56,7 +68,7 @@ public class Net{
                 error = Core.bundle.get("error.io");
             }else if(error.equals("mismatch")){
                 error = Core.bundle.get("error.mismatch");
-            }else if(error.contains("port out of range") || error.contains("invalid argument") || (error.contains("invalid") && error.contains("address")) || Strings.parseException(e, true).contains("address associated")){
+            }else if(error.contains("port out of range") || error.contains("invalid argument") || (error.contains("invalid") && error.contains("address")) || Strings.neatError(e).contains("address associated")){
                 error = Core.bundle.get("error.invalidaddress");
             }else if(error.contains("connection refused") || error.contains("route to host") || type.contains("unknownhost")){
                 error = Core.bundle.get("error.unreachable");
@@ -70,7 +82,7 @@ public class Net{
             }
 
             if(isError){
-                ui.showException("$error.any", e);
+                ui.showException("@error.any", e);
             }else{
                 ui.showText("", Core.bundle.format("connectfail", error));
             }
@@ -85,7 +97,7 @@ public class Net{
     }
 
     /**
-     * Sets the client loaded status, or whether it will recieve normal packets from the server.
+     * Sets the client loaded status, or whether it will receive normal packets from the server.
      */
     public void setClientLoaded(boolean loaded){
         clientLoaded = loaded;
@@ -138,7 +150,7 @@ public class Net{
      */
     public void closeServer(){
         for(NetConnection con : getConnections()){
-            Call.onKick(con, KickReason.serverClose);
+            Call.kick(con, KickReason.serverClose);
         }
 
         provider.closeServer();
@@ -152,6 +164,9 @@ public class Net{
     }
 
     public void disconnect(){
+        if(active && !server){
+            Log.info("Disconnecting.");
+        }
         provider.disconnectClient();
         server = false;
         active = false;
@@ -205,21 +220,21 @@ public class Net{
     }
 
     /**
-     * Registers a client listener for when an object is recieved.
+     * Registers a client listener for when an object is received.
      */
     public <T> void handleClient(Class<T> type, Cons<T> listener){
         clientListeners.put(type, listener);
     }
 
     /**
-     * Registers a server listener for when an object is recieved.
+     * Registers a server listener for when an object is received.
      */
     public <T> void handleServer(Class<T> type, Cons2<NetConnection, T> listener){
         serverListeners.put(type, (Cons2<NetConnection, Object>)listener);
     }
 
     /**
-     * Call to handle a packet being recieved for the client.
+     * Call to handle a packet being received for the client.
      */
     public void handleClientReceived(Object object){
 
@@ -231,7 +246,7 @@ public class Net{
             StreamChunk c = (StreamChunk)object;
             StreamBuilder builder = streams.get(c.id);
             if(builder == null){
-                throw new RuntimeException("Recieved stream chunk without a StreamBegin beforehand!");
+                throw new RuntimeException("Received stream chunk without a StreamBegin beforehand!");
             }
             builder.add(c.data);
             if(builder.isDone()){
@@ -256,7 +271,7 @@ public class Net{
     }
 
     /**
-     * Call to handle a packet being recieved for the server.
+     * Call to handle a packet being received for the server.
      */
     public void handleServerReceived(NetConnection connection, Object object){
 

@@ -2,7 +2,6 @@ package mindustry.graphics;
 
 import arc.*;
 import arc.graphics.*;
-import arc.graphics.g2d.*;
 import arc.graphics.gl.*;
 
 import static mindustry.Vars.renderer;
@@ -17,6 +16,17 @@ public enum CacheLayer{
         @Override
         public void end(){
             endShader(Shaders.water);
+        }
+    },
+    mud{
+        @Override
+        public void begin(){
+            beginShader();
+        }
+
+        @Override
+        public void end(){
+            endShader(Shaders.mud);
         }
     },
     tar{
@@ -42,7 +52,7 @@ public enum CacheLayer{
         }
     },
     normal(5),
-    walls;
+    walls(3);
 
     public static final CacheLayer[] all = values();
     /** Capacity multiplier. */
@@ -79,9 +89,7 @@ public enum CacheLayer{
         renderer.blocks.floor.endc();
         renderer.effectBuffer.end();
 
-        Draw.shader(shader);
-        Draw.rect(renderer.effectBuffer);
-        Draw.shader();
+        renderer.effectBuffer.blit(shader);
 
         renderer.blocks.floor.beginc();
     }

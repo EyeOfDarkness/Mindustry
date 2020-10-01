@@ -6,7 +6,7 @@ import mindustry.game.*;
 import mindustry.gen.*;
 import mindustry.world.*;
 
-import static mindustry.Vars.content;
+import static mindustry.Vars.*;
 
 public interface Payload{
     int payloadUnit = 0, payloadBlock = 1;
@@ -17,6 +17,9 @@ public interface Payload{
     /** draws this payload at a position. */
     void draw();
 
+    /** @return hitbox size of the payload. */
+    float size();
+
     /** @return whether this payload was dumped. */
     default boolean dump(){
         return false;
@@ -24,7 +27,7 @@ public interface Payload{
 
     /** @return whether this payload fits on a standard 3x3 conveyor. */
     default boolean fits(){
-        return true;
+        return size() / tilesize <= 2.5f;
     }
 
     /** writes the payload for saving. */
@@ -54,7 +57,7 @@ public interface Payload{
             return (T)payload;
         }else if(type == payloadUnit){
             byte id = read.b();
-            Unitc unit = (Unitc)EntityMapping.map(id).get();
+            Unit unit = (Unit)EntityMapping.map(id).get();
             unit.read(read);
             return (T)new UnitPayload(unit);
         }

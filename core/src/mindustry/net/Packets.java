@@ -159,7 +159,7 @@ public class Packets{
     public static class ConnectPacket implements Packet{
         public int version;
         public String versionType;
-        public Array<String> mods;
+        public Seq<String> mods;
         public String name, uuid, usid;
         public boolean mobile;
         public int color;
@@ -171,9 +171,10 @@ public class Packets{
             TypeIO.writeString(buffer, name);
             TypeIO.writeString(buffer, usid);
 
-            buffer.put(Base64Coder.decode(uuid));
+            byte[] b = Base64Coder.decode(uuid);
+            buffer.put(b);
             CRC32 crc = new CRC32();
-            crc.update(Base64Coder.decode(uuid));
+            crc.update(Base64Coder.decode(uuid), 0, b.length);
             buffer.putLong(crc.getValue());
 
             buffer.put(mobile ? (byte)1 : 0);
@@ -196,7 +197,7 @@ public class Packets{
             mobile = buffer.get() == 1;
             color = buffer.getInt();
             int totalMods = buffer.get();
-            mods = new Array<>(totalMods);
+            mods = new Seq<>(totalMods);
             for(int i = 0; i < totalMods; i++){
                 mods.add(TypeIO.readString(buffer));
             }

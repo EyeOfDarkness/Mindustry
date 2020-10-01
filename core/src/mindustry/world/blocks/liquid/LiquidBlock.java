@@ -1,9 +1,9 @@
 package mindustry.world.blocks.liquid;
 
-import arc.*;
 import arc.graphics.g2d.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.gen.*;
+import mindustry.graphics.*;
 import mindustry.world.*;
 import mindustry.world.meta.*;
 
@@ -22,21 +22,18 @@ public class LiquidBlock extends Block{
     }
 
     @Override
-    public TextureRegion[] generateIcons(){
-        return new TextureRegion[]{Core.atlas.find(name + "-bottom"), Core.atlas.find(name + "-top")};
+    public TextureRegion[] icons(){
+        return new TextureRegion[]{bottomRegion, topRegion};
     }
 
-    public class LiquidBlockEntity extends TileEntity{
+    public class LiquidBuild extends Building{
         @Override
         public void draw(){
             float rotation = rotate ? rotdeg() : 0;
             Draw.rect(bottomRegion, x, y, rotation);
 
             if(liquids.total() > 0.001f){
-                Draw.color(liquids.current().color);
-                Draw.alpha(liquids.total() / liquidCapacity);
-                Draw.rect(liquidRegion, x, y, rotation);
-                Draw.color();
+                Drawf.liquid(liquidRegion, x, y, liquids.total() / liquidCapacity, liquids.current().color);
             }
 
             Draw.rect(topRegion, x, y, rotation);

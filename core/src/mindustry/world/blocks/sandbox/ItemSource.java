@@ -23,9 +23,10 @@ public class ItemSource extends Block{
         group = BlockGroup.transportation;
         configurable = true;
         saveConfig = true;
+        noUpdateDisabled = true;
 
-        config(Item.class, (tile, item) -> ((ItemSourceEntity)tile).outputItem = item);
-        configClear(tile -> ((ItemSourceEntity)tile).outputItem = null);
+        config(Item.class, (ItemSourceBuild tile, Item item) -> tile.outputItem = item);
+        configClear((ItemSourceBuild tile) -> tile.outputItem = null);
     }
 
     @Override
@@ -35,7 +36,7 @@ public class ItemSource extends Block{
     }
 
     @Override
-    public void drawRequestConfig(BuildRequest req, Eachable<BuildRequest> list){
+    public void drawRequestConfig(BuildPlan req, Eachable<BuildPlan> list){
         drawRequestConfigCenter(req, req.config, "center");
     }
 
@@ -44,18 +45,20 @@ public class ItemSource extends Block{
         return true;
     }
 
-    public class ItemSourceEntity extends TileEntity{
+    public class ItemSourceBuild extends Building{
         Item outputItem;
 
         @Override
         public void draw(){
             super.draw();
 
-            if(outputItem == null) return;
-
-            Draw.color(outputItem.color);
-            Draw.rect("center", x, y);
-            Draw.color();
+            if(outputItem == null){
+                Draw.rect("cross", x, y);
+            }else{
+                Draw.color(outputItem.color);
+                Draw.rect("center", x, y);
+                Draw.color();
+            }
         }
 
         @Override
@@ -69,11 +72,11 @@ public class ItemSource extends Block{
 
         @Override
         public void buildConfiguration(Table table){
-            ItemSelection.buildTable(table, content.items(), () -> outputItem, item -> configure(item));
+            ItemSelection.buildTable(table, content.items(), () -> outputItem, this::configure);
         }
 
         @Override
-        public boolean onConfigureTileTapped(Tilec other){
+        public boolean onConfigureTileTapped(Building other){
             if(this == other){
                 deselect();
                 configure(null);
@@ -84,7 +87,7 @@ public class ItemSource extends Block{
         }
 
         @Override
-        public boolean acceptItem(Tilec source, Item item){
+        public boolean acceptItem(Building source, Item item){
             return false;
         }
 

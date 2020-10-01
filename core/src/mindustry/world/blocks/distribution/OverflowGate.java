@@ -21,6 +21,7 @@ public class OverflowGate extends Block{
         solid = true;
         update = true;
         group = BlockGroup.transportation;
+        instantTransfer = true;
         unloadable = false;
         canOverdrive = false;
     }
@@ -30,10 +31,10 @@ public class OverflowGate extends Block{
         return true;
     }
 
-    public class OverflowGateEntity extends TileEntity{
-        Item lastItem;
-        Tile lastInput;
-        float time;
+    public class OverflowGateBuild extends Building{
+        public Item lastItem;
+        public Tile lastInput;
+        public float time;
 
         @Override
         public int acceptStack(Item item, int amount, Teamc source){
@@ -61,8 +62,8 @@ public class OverflowGate extends Block{
                     return;
                 }
 
-                time += 1f / speed * Time.delta();
-                Tilec target = getTileTarget(lastItem, lastInput, false);
+                time += 1f / speed * Time.delta;
+                Building target = getTileTarget(lastItem, lastInput, false);
 
                 if(target != null && (time >= 1f)){
                     getTileTarget(lastItem, lastInput, true);
@@ -74,33 +75,33 @@ public class OverflowGate extends Block{
         }
 
         @Override
-        public boolean acceptItem(Tilec source, Item item){
-            return team == source.team() && lastItem == null && items.total() == 0;
+        public boolean acceptItem(Building source, Item item){
+            return team == source.team && lastItem == null && items.total() == 0;
         }
 
         @Override
-        public void handleItem(Tilec source, Item item){
+        public void handleItem(Building source, Item item){
             items.add(item, 1);
             lastItem = item;
             time = 0f;
             lastInput = source.tile();
         }
 
-        public @Nullable Tilec getTileTarget(Item item, Tile src, boolean flip){
+        public @Nullable Building getTileTarget(Item item, Tile src, boolean flip){
             int from = relativeToEdge(src);
             if(from == -1) return null;
-            Tilec to = nearby((from + 2) % 4);
-            boolean canForward = to != null && to.acceptItem(this, item) && to.team() == team && !(to.block() instanceof OverflowGate);
+            Building to = nearby((from + 2) % 4);
+            boolean canForward = to != null && to.acceptItem(this, item) && to.team == team && !(to.block instanceof OverflowGate);
+            boolean inv = invert == enabled;
 
-
-            if(!canForward || invert){
-                Tilec a = nearby(Mathf.mod(from - 1, 4));
-                Tilec b = nearby(Mathf.mod(from + 1, 4));
-                boolean ac = a != null && a.acceptItem(this, item) && !(a.block() instanceof OverflowGate) && a.team() == team;
-                boolean bc = b != null && b.acceptItem(this, item) && !(b.block() instanceof OverflowGate) && b.team() == team;
+            if(!canForward || inv){
+                Building a = nearby(Mathf.mod(from - 1, 4));
+                Building b = nearby(Mathf.mod(from + 1, 4));
+                boolean ac = a != null && a.acceptItem(this, item) && !(a.block instanceof OverflowGate) && a.team == team;
+                boolean bc = b != null && b.acceptItem(this, item) && !(b.block instanceof OverflowGate) && b.team == team;
 
                 if(!ac && !bc){
-                    return invert && canForward ? to : null;
+                    return inv && canForward ? to : null;
                 }
 
                 if(ac && !bc){
@@ -108,12 +109,12 @@ public class OverflowGate extends Block{
                 }else if(bc && !ac){
                     to = b;
                 }else{
-                    if(tile.rotation() == 0){
+                    if(rotation == 0){
                         to = a;
-                        if(flip) tile.rotation((byte) 1);
+                        if(flip) rotation =1;
                     }else{
                         to = b;
-                        if(flip) tile.rotation((byte) 0);
+                        if(flip) rotation = 0;
                     }
                 }
             }
@@ -128,12 +129,15 @@ public class OverflowGate extends Block{
 
         @Override
         public void write(Writes write){
+            super.write(write);
+
             write.i(lastInput == null ? -1 : lastInput.pos());
         }
 
         @Override
         public void read(Reads read, byte revision){
             super.read(read, revision);
+
             if(revision == 1){
                 new DirectionalItemBuffer(25).read(read);
             }else if(revision == 3){

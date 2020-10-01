@@ -13,7 +13,7 @@ public class Placement{
     private static final NormalizeResult result = new NormalizeResult();
     private static final NormalizeDrawResult drawResult = new NormalizeDrawResult();
     private static Bresenham2 bres = new Bresenham2();
-    private static Array<Point2> points = new Array<>();
+    private static Seq<Point2> points = new Seq<>();
 
     //for pathfinding
     private static IntFloatMap costs = new IntFloatMap();
@@ -21,7 +21,7 @@ public class Placement{
     private static IntSet closed = new IntSet();
 
     /** Normalize a diagonal line into points. */
-    public static Array<Point2> pathfindLine(boolean conveyors, int startX, int startY, int endX, int endY){
+    public static Seq<Point2> pathfindLine(boolean conveyors, int startX, int startY, int endX, int endY){
         Pools.freeAll(points);
 
         points.clear();
@@ -37,7 +37,7 @@ public class Placement{
     }
 
     /** Normalize two points into one straight line, no diagonals. */
-    public static Array<Point2> normalizeLine(int startX, int startY, int endX, int endY){
+    public static Seq<Point2> normalizeLine(int startX, int startY, int endX, int endY){
         Pools.freeAll(points);
         points.clear();
         if(Math.abs(startX - endX) > Math.abs(startY - endY)){
@@ -154,7 +154,7 @@ public class Placement{
     public static NormalizeDrawResult normalizeDrawArea(Block block, int startx, int starty, int endx, int endy, boolean snap, int maxLength, float scaling){
         normalizeArea(startx, starty, endx, endy, 0, snap, maxLength);
 
-        float offset = block.offset();
+        float offset = block.offset;
 
         drawResult.x = result.x * tilesize;
         drawResult.y = result.y * tilesize;

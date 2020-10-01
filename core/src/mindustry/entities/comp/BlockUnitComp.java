@@ -1,36 +1,44 @@
 package mindustry.entities.comp;
 
+import arc.graphics.g2d.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.game.*;
 import mindustry.gen.*;
+import mindustry.ui.*;
 
-import static mindustry.Vars.tilesize;
+import static mindustry.Vars.*;
 
 @Component
 abstract class BlockUnitComp implements Unitc{
     @Import Team team;
 
-    @ReadOnly transient Tilec tile;
+    @ReadOnly transient Building tile;
 
-    public void tile(Tilec tile){
+    public void tile(Building tile){
         this.tile = tile;
 
         //sets up block stats
-        maxHealth(tile.block().health);
+        maxHealth(tile.block.health);
         health(tile.health());
-        hitSize(tile.block().size * tilesize * 0.7f);
+        hitSize(tile.block.size * tilesize * 0.7f);
         set(tile);
     }
 
     @Override
     public void update(){
         if(tile != null){
-            team = tile.team();
+            team = tile.team;
         }
     }
 
     @Replace
-    public void kill(){
+    @Override
+    public TextureRegion icon(){
+        return tile.block.icon(Cicon.full);
+    }
+
+    @Override
+    public void killed(){
         tile.kill();
     }
 
@@ -53,7 +61,7 @@ abstract class BlockUnitComp implements Unitc{
     public void team(Team team){
         if(tile != null && this.team != team){
             this.team = team;
-            if(tile.team() != team){
+            if(tile.team != team){
                 tile.team(team);
             }
         }

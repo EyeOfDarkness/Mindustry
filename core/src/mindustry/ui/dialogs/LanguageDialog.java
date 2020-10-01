@@ -21,7 +21,7 @@ public class LanguageDialog extends BaseDialog{
     );
 
     public LanguageDialog(){
-        super("$settings.language");
+        super("@settings.language");
         addCloseButton();
         setup();
     }
@@ -30,7 +30,7 @@ public class LanguageDialog extends BaseDialog{
         Table langs = new Table();
         langs.marginRight(24f).marginLeft(24f);
         ScrollPane pane = new ScrollPane(langs);
-        pane.setFadeScrollBars(false);
+        pane.setScrollingDisabled(true, false);
 
         ButtonGroup<TextButton> group = new ButtonGroup<>();
 
@@ -40,7 +40,7 @@ public class LanguageDialog extends BaseDialog{
                 if(getLocale().equals(loc)) return;
                 Core.settings.put("locale", loc.toString());
                 Log.info("Setting locale: @", loc.toString());
-                ui.showInfo("$language.restart");
+                ui.showInfo("@language.restart");
             });
             langs.add(button).group(group).update(t -> t.setChecked(loc.equals(getLocale()))).size(400f, 50f).row();
         }

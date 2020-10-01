@@ -21,20 +21,20 @@ public class CachedTile extends Tile{
     }
 
     @Override
-    protected void changeEntity(Team team, Prov<Tilec> entityprov){
-        entity = null;
+    protected void changeEntity(Team team, Prov<Building> entityprov, int rotation){
+        build = null;
 
         Block block = block();
 
-        if(block.hasEntity()){
-            Tilec n = entityprov.get();
-            n.cons(new ConsumeModule(entity));
+        if(block.hasBuilding()){
+            Building n = entityprov.get();
+            n.cons(new ConsumeModule(build));
             n.tile(this);
             n.block(block);
-            if(block.hasItems) n.items(new ItemModule());
+            if(block.hasItems) n.items = new ItemModule();
             if(block.hasLiquids) n.liquids(new LiquidModule());
             if(block.hasPower) n.power(new PowerModule());
-            entity = n;
+            build = n;
         }
     }
 }

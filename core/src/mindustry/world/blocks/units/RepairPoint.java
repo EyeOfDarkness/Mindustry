@@ -1,6 +1,5 @@
 package mindustry.world.blocks.units;
 
-import arc.*;
 import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
@@ -14,10 +13,10 @@ import mindustry.graphics.*;
 import mindustry.world.*;
 import mindustry.world.meta.*;
 
-import static mindustry.Vars.tilesize;
+import static mindustry.Vars.*;
 
 public class RepairPoint extends Block{
-    private static final Rect rect = new Rect();
+    static final Rect rect = new Rect();
 
     public int timerTarget = timers++;
 
@@ -28,6 +27,8 @@ public class RepairPoint extends Block{
     public @Load("@-base") TextureRegion baseRegion;
     public @Load("laser") TextureRegion laser;
     public @Load("laser-end") TextureRegion laserEnd;
+
+    public Color laserColor = Color.valueOf("e8ffd7");
 
     public RepairPoint(String name){
         super(name);
@@ -46,22 +47,22 @@ public class RepairPoint extends Block{
 
     @Override
     public void init(){
-        consumes.powerCond(powerUse, entity -> ((RepairPointEntity)entity).target != null);
+        consumes.powerCond(powerUse, entity -> ((RepairPointBuild)entity).target != null);
         super.init();
     }
 
     @Override
     public void drawPlace(int x, int y, int rotation, boolean valid){
-        Drawf.dashCircle(x * tilesize + offset(), y * tilesize + offset(), repairRadius, Pal.accent);
+        Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, repairRadius, Pal.accent);
     }
 
     @Override
-    public TextureRegion[] generateIcons(){
-        return new TextureRegion[]{Core.atlas.find(name + "-base"), Core.atlas.find(name)};
+    public TextureRegion[] icons(){
+        return new TextureRegion[]{baseRegion, region};
     }
 
-    public class RepairPointEntity extends TileEntity{
-        public Unitc target;
+    public class RepairPointBuild extends Building{
+        public Unit target;
         public float strength, rotation = 90;
 
         @Override
@@ -69,15 +70,16 @@ public class RepairPoint extends Block{
             Draw.rect(baseRegion, x, y);
 
             Draw.z(Layer.turret);
+            Drawf.shadow(region, x - (size / 2), y - (size / 2), rotation - 90);
             Draw.rect(region, x, y, rotation - 90);
 
             if(target != null && Angles.angleDist(angleTo(target), rotation) < 30f){
-                Draw.z(Layer.power);
+                Draw.z(Layer.flyingUnit + 1); //above all units
                 float ang = angleTo(target);
                 float len = 5f;
 
-                Draw.color(Color.valueOf("e8ffd7"));
-                Drawf.laser(laser, laserEnd,
+                Draw.color(laserColor);
+                Drawf.laser(team, laser, laserEnd,
                 x + Angles.trnsx(ang, len), y + Angles.trnsy(ang, len),
                 target.x(), target.y(), strength);
                 Draw.color();
@@ -95,26 +97,26 @@ public class RepairPoint extends Block{
             if(target != null && (target.dead() || target.dst(tile) > repairRadius || target.health() >= target.maxHealth())){
                 target = null;
             }else if(target != null && consValid()){
-                target.heal(repairSpeed * Time.delta() * strength * efficiency());
+                target.heal(repairSpeed * Time.delta * strength * efficiency());
                 rotation = Mathf.slerpDelta(rotation, angleTo(target), 0.5f);
                 targetIsBeingRepaired = true;
             }
 
             if(target != null && targetIsBeingRepaired){
-                strength = Mathf.lerpDelta(strength, 1f, 0.08f * Time.delta());
+                strength = Mathf.lerpDelta(strength, 1f, 0.08f * Time.delta);
             }else{
-                strength = Mathf.lerpDelta(strength, 0f, 0.07f * Time.delta());
+                strength = Mathf.lerpDelta(strength, 0f, 0.07f * Time.delta);
             }
 
             if(timer(timerTarget, 20)){
                 rect.setSize(repairRadius * 2).setCenter(x, y);
-                target = Units.closest(team, x, y, repairRadius, Unitc::damaged);
+                target = Units.closest(team, x, y, repairRadius, Unit::damaged);
             }
         }
 
         @Override
         public boolean shouldConsume(){
-            return target != null;
+            return target != null && enabled;
         }
     }
 }

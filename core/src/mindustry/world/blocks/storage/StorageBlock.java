@@ -20,11 +20,11 @@ public abstract class StorageBlock extends Block{
         return false;
     }
 
-    public class StorageBlockEntity extends TileEntity{
-        protected @Nullable Tilec linkedCore;
+    public class StorageBuild extends Building{
+        protected @Nullable Building linkedCore;
 
         @Override
-        public boolean acceptItem(Tilec source, Item item){
+        public boolean acceptItem(Building source, Item item){
             return linkedCore != null ? linkedCore.acceptItem(source, item) : items.get(item) < getMaximumAccepted(item);
         }
 
@@ -38,6 +38,11 @@ public abstract class StorageBlock extends Block{
             if(linkedCore != null){
                 linkedCore.drawSelect();
             }
+        }
+
+        @Override
+        public boolean canPickup(){
+            return linkedCore == null;
         }
     }
 }

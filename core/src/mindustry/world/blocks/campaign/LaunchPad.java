@@ -5,9 +5,9 @@ import arc.graphics.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
 import arc.math.geom.*;
+import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.*;
-import mindustry.*;
 import mindustry.annotations.Annotations.*;
 import mindustry.content.*;
 import mindustry.entities.*;
@@ -18,6 +18,8 @@ import mindustry.type.*;
 import mindustry.ui.*;
 import mindustry.world.*;
 import mindustry.world.meta.*;
+
+import static mindustry.Vars.*;
 
 public class LaunchPad extends Block{
     public final int timerLaunch = timers++;
@@ -33,6 +35,7 @@ public class LaunchPad extends Block{
         hasItems = true;
         solid = true;
         update = true;
+        configurable = true;
     }
 
     @Override
@@ -46,15 +49,16 @@ public class LaunchPad extends Block{
     public void setBars(){
         super.setBars();
 
-        bars.add("items", entity -> new Bar(() -> Core.bundle.format("bar.items", entity.items().total()), () -> Pal.items, () -> (float)entity.items().total() / itemCapacity));
+        bars.add("items", entity -> new Bar(() -> Core.bundle.format("bar.items", entity.items.total()), () -> Pal.items, () -> (float)entity.items.total() / itemCapacity));
     }
 
-    public class LaunchPadEntity extends TileEntity{
+    public class LaunchPadBuild extends Building{
+
         @Override
         public void draw(){
             super.draw();
 
-            if(!Vars.state.isCampaign()) return;
+            if(!state.isCampaign()) return;
 
             if(lightRegion.found()){
                 Draw.color(lightColor);
@@ -85,35 +89,64 @@ public class LaunchPad extends Block{
         }
 
         @Override
-        public boolean acceptItem(Tilec source, Item item){
+        public boolean acceptItem(Building source, Item item){
             return items.total() < itemCapacity;
         }
 
         @Override
         public void updateTile(){
-            if(!Vars.state.isCampaign()) return;
+            if(!state.isCampaign()) return;
 
             //launch when full and base conditions are met
             if(items.total() >= itemCapacity && efficiency() >= 1f && timer(timerLaunch, launchTime / timeScale)){
-                LaunchPayloadc entity = LaunchPayloadEntity.create();
-                items.each((item, amount) -> entity.stacks().add(new ItemStack(item, amount)));
+                LaunchPayload entity = LaunchPayload.create();
+                items.each((item, amount) -> entity.stacks.add(new ItemStack(item, amount)));
                 entity.set(this);
                 entity.lifetime(120f);
                 entity.team(team);
                 entity.add();
                 Fx.launchPod.at(this);
                 items.clear();
-                Effects.shake(3f, 3f, this);
+                Effect.shake(3f, 3f, this);
             }
+        }
+
+        @Override
+        public void display(Table table){
+            super.display(table);
+
+            table.row();
+            table.label(() -> {
+                Sector dest = state.secinfo.getRealDestination();
+
+                return Core.bundle.format("launch.destination",
+                    dest == null ? Core.bundle.get("sectors.nonelaunch") :
+                    dest.preset == null ?
+                        "[accent]Sector " + dest.id :
+                        "[accent]" + dest.preset.localizedName);
+            }).pad(4);
+        }
+
+        @Override
+        public void buildConfiguration(Table table){
+            if(!state.isCampaign()){
+                deselect();
+                return;
+            }
+
+            table.button(Icon.upOpen, Styles.clearTransi, () -> {
+                ui.planet.showSelect(state.rules.sector, other -> state.secinfo.destination = other);
+                deselect();
+            }).size(40f);
         }
     }
 
     @EntityDef(LaunchPayloadc.class)
-    @Component
+    @Component(base = true)
     static abstract class LaunchPayloadComp implements Drawc, Timedc, Teamc{
         @Import float x,y;
 
-        Array<ItemStack> stacks = new Array<>();
+        Seq<ItemStack> stacks = new Seq<>();
         transient Interval in = new Interval();
 
         @Override
@@ -141,7 +174,7 @@ public class LaunchPad extends Block{
             Draw.z(Layer.weather - 1);
 
             TextureRegion region = Core.atlas.find("launchpod");
-            float rw = region.getWidth() * Draw.scl * scale, rh = region.getHeight() * Draw.scl * scale;
+            float rw = region.width * Draw.scl * scale, rh = region.height * Draw.scl * scale;
 
             Draw.alpha(alpha);
             Draw.rect(region, cx, cy, rw, rh, rotation);
@@ -173,12 +206,24 @@ public class LaunchPad extends Block{
 
         @Override
         public void remove(){
+            if(!state.isCampaign()) return;
+
+            Sector destsec = state.secinfo.getRealDestination();
 
             //actually launch the items upon removal
-            if(team() == Vars.state.rules.defaultTeam){
-                for(ItemStack stack : stacks){
-                    Vars.data.addItem(stack.item, stack.amount);
-                    Events.fire(new LaunchItemEvent(stack));
+            if(team() == state.rules.defaultTeam){
+                if(destsec != null && (destsec != state.rules.sector || net.client())){
+                    ItemSeq dest = destsec.getExtraItems();
+
+                    for(ItemStack stack : stacks){
+                        dest.add(stack);
+
+                        //update export
+                        state.secinfo.handleItemExport(stack);
+                        Events.fire(new LaunchItemEvent(stack));
+                    }
+
+                    destsec.setExtraItems(dest);
                 }
             }
         }

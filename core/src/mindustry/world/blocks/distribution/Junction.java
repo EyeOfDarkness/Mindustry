@@ -19,6 +19,7 @@ public class Junction extends Block{
         solid = true;
         group = BlockGroup.transportation;
         unloadable = false;
+        noUpdateDisabled = true;
     }
 
     @Override
@@ -26,8 +27,8 @@ public class Junction extends Block{
         return true;
     }
 
-    public class JunctionEntity extends TileEntity{
-        DirectionalItemBuffer buffer = new DirectionalItemBuffer(capacity);
+    public class JunctionBuild extends Building{
+        public DirectionalItemBuffer buffer = new DirectionalItemBuffer(capacity);
 
         @Override
         public int acceptStack(Item item, int amount, Teamc source){
@@ -46,10 +47,10 @@ public class Junction extends Block{
                     if(Time.time() >= time + speed / timeScale || Time.time() < time){
 
                         Item item = content.item(BufferItem.item(l));
-                        Tilec dest = nearby(i);
+                        Building dest = nearby(i);
 
                         //skip blocks that don't want the item, keep waiting until they do
-                        if(dest == null || !dest.acceptItem(this, item) || dest.team() != team){
+                        if(dest == null || !dest.acceptItem(this, item) || dest.team != team){
                             continue;
                         }
 
@@ -62,18 +63,18 @@ public class Junction extends Block{
         }
 
         @Override
-        public void handleItem(Tilec source, Item item){
+        public void handleItem(Building source, Item item){
             int relative = source.relativeTo(tile);
             buffer.accept(relative, item);
         }
 
         @Override
-        public boolean acceptItem(Tilec source, Item item){
+        public boolean acceptItem(Building source, Item item){
             int relative = source.relativeTo(tile);
 
             if(relative == -1 || !buffer.accepts(relative)) return false;
-            Tilec to = nearby(relative);
-            return to != null && to.team() == team;
+            Building to = nearby(relative);
+            return to != null && to.team == team;
         }
 
         @Override

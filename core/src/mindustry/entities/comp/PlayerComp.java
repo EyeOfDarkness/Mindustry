@@ -9,10 +9,11 @@ import arc.util.*;
 import arc.util.ArcAnnotate.*;
 import arc.util.pooling.*;
 import mindustry.annotations.Annotations.*;
+import mindustry.content.*;
 import mindustry.core.*;
 import mindustry.entities.units.*;
-import mindustry.game.*;
 import mindustry.game.EventType.*;
+import mindustry.game.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
 import mindustry.net.Administration.*;
@@ -20,23 +21,28 @@ import mindustry.net.*;
 import mindustry.net.Packets.*;
 import mindustry.ui.*;
 import mindustry.world.*;
+import mindustry.world.blocks.storage.*;
 import mindustry.world.blocks.storage.CoreBlock.*;
 
 import static mindustry.Vars.*;
 
 @EntityDef(value = {Playerc.class}, serialize = false)
-@Component
+@Component(base = true)
 abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Drawc{
     static final float deathDelay = 30f;
 
-    @NonNull @ReadOnly Unitc unit = Nulls.unit;
+    @Import float x, y;
+
+    @NonNull @ReadOnly Unit unit = Nulls.unit;
+    transient private Unit lastReadUnit = Nulls.unit;
     transient @Nullable NetConnection con;
 
     @ReadOnly Team team = Team.sharded;
+    @SyncLocal boolean typing, shooting, boosting;
+    boolean admin;
+    @SyncLocal float mouseX, mouseY;
     String name = "noname";
-    boolean admin, typing, shooting, boosting;
     Color color = new Color();
-    float mouseX, mouseY;
 
     transient float deathTimer;
     transient String lastText = "";
@@ -50,8 +56,23 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
         return unit instanceof Minerc;
     }
 
-    public @Nullable CoreEntity closestCore(){
-        return state.teams.closestCore(x(), y(), team);
+    public @Nullable CoreBuild closestCore(){
+        return state.teams.closestCore(x, y, team);
+    }
+
+    public @Nullable CoreBuild core(){
+        return team.core();
+    }
+
+    public TextureRegion icon(){
+        //display default icon for dead players
+        if(dead()) return core() == null ? UnitTypes.alpha.icon(Cicon.full) : ((CoreBlock)core().block).unitType.icon(Cicon.full);
+
+        return unit.icon();
+    }
+
+    public boolean displayAmmo(){
+        return unit instanceof BlockUnitc || state.rules.unitAmmo;
     }
 
     public void reset(){
@@ -64,13 +85,24 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
         }
     }
 
+    @Override
+    public boolean isValidController(){
+        return isAdded();
+    }
+
     @Replace
     public float clipSize(){
-        return unit.isNull() ? 20 : unit.type().hitsize * 2f;
+        return unit.isNull() ? 20 : unit.type().hitSize * 2f;
     }
 
     @Override
     public void afterSync(){
+        //simulate a unit change after sync
+        Unit set = unit;
+        unit = lastReadUnit;
+        unit(set);
+        lastReadUnit = unit;
+
         unit.aim(mouseX, mouseY);
         //this is only necessary when the thing being controlled isn't synced
         unit.controlWeapons(shooting, shooting);
@@ -84,31 +116,39 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
             clearUnit();
         }
 
-        CoreEntity core = closestCore();
+        CoreBuild core = closestCore();
 
         if(!dead()){
-            x(unit.x());
-            y(unit.y());
+            set(unit);
             unit.team(team);
             deathTimer = 0;
 
             //update some basic state to sync things
             if(unit.type().canBoost){
                 Tile tile = unit.tileOn();
-                unit.elevation(Mathf.approachDelta(unit.elevation(), (tile != null && tile.solid()) || boosting ? 1f : 0f, 0.08f));
+                unit.elevation = Mathf.approachDelta(unit.elevation, (tile != null && tile.solid()) || boosting ? 1f : 0f, 0.08f);
             }
         }else if(core != null){
             //have a small delay before death to prevent the camera from jumping around too quickly
             //(this is not for balance)
-            deathTimer += Time.delta();
+            deathTimer += Time.delta;
             if(deathTimer >= deathDelay){
-                core.requestSpawn((Playerc)this);
+                //request spawn - this happens serverside only
+                core.requestSpawn(self());
                 deathTimer = 0;
             }
         }
 
-        textFadeTime -= Time.delta() / (60 * 5);
+        textFadeTime -= Time.delta / (60 * 5);
 
+    }
+
+    @Override
+    public void remove(){
+        //clear unit upon removal
+        if(!unit.isNull()){
+            clearUnit();
+        }
     }
 
     public void team(Team team){
@@ -120,7 +160,7 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
         unit(Nulls.unit);
     }
 
-    public Unitc unit(){
+    public Unit unit(){
         return unit;
     }
 
@@ -132,9 +172,10 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
         return !(unit instanceof Builderc) ? Nulls.builder : (Builderc)unit;
     }
 
-    public void unit(Unitc unit){
+    public void unit(Unit unit){
         if(unit == null) throw new IllegalArgumentException("Unit cannot be null. Use clearUnit() instead.");
         if(this.unit == unit) return;
+
         if(this.unit != Nulls.unit){
             //un-control the old unit
             this.unit.controller(this.unit.type().createController());
@@ -143,9 +184,14 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
         if(unit != Nulls.unit){
             unit.team(team);
             unit.controller(this);
+
+            //this player just became remote, snap the interpolation so it doesn't go wild
+            if(unit.isRemote()){
+                unit.snapInterpolation();
+            }
         }
 
-        Events.fire(new UnitChangeEvent((Playerc)this, unit));
+        Events.fire(new UnitChangeEvent(self(), unit));
     }
 
     boolean dead(){
@@ -177,7 +223,7 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
         Draw.z(Layer.playerName);
         float z = Drawf.text();
 
-        BitmapFont font = Fonts.def;
+        Font font = Fonts.def;
         GlyphLayout layout = Pools.obtain(GlyphLayout.class, GlyphLayout::new);
         final float nameHeight = 11;
         final float textHeight = 15;
@@ -189,17 +235,17 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
 
         if(!isLocal()){
             Draw.color(0f, 0f, 0f, 0.3f);
-            Fill.rect(unit.x(), unit.y() + nameHeight - layout.height / 2, layout.width + 2, layout.height + 3);
+            Fill.rect(unit.x, unit.y + nameHeight - layout.height / 2, layout.width + 2, layout.height + 3);
             Draw.color();
             font.setColor(color);
-            font.draw(name, unit.x(), unit.y() + nameHeight, 0, Align.center, false);
+            font.draw(name, unit.x, unit.y + nameHeight, 0, Align.center, false);
 
             if(admin){
                 float s = 3f;
                 Draw.color(color.r * 0.5f, color.g * 0.5f, color.b * 0.5f, 1f);
-                Draw.rect(Icon.adminSmall.getRegion(), unit.x() + layout.width / 2f + 2 + 1, unit.y() + nameHeight - 1.5f, s, s);
+                Draw.rect(Icon.adminSmall.getRegion(), unit.x + layout.width / 2f + 2 + 1, unit.y + nameHeight - 1.5f, s, s);
                 Draw.color(color);
-                Draw.rect(Icon.adminSmall.getRegion(), unit.x() + layout.width / 2f + 2 + 1, unit.y() + nameHeight - 1f, s, s);
+                Draw.rect(Icon.adminSmall.getRegion(), unit.x + layout.width / 2f + 2 + 1, unit.y + nameHeight - 1f, s, s);
             }
         }
 
@@ -212,8 +258,8 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
             layout.setText(font, text, Color.white, width, Align.bottom, true);
 
             Draw.color(0f, 0f, 0f, 0.3f * (textFadeTime <= 0 || lastText == null  ? 1f : visualFadeTime));
-            Fill.rect(unit.x(), unit.y() + textHeight + layout.height - layout.height/2f, layout.width + 2, layout.height + 3);
-            font.draw(text, unit.x() - width/2f, unit.y() + textHeight + layout.height, width, Align.center, true);
+            Fill.rect(unit.x, unit.y + textHeight + layout.height - layout.height/2f, layout.width + 2, layout.height + 3);
+            font.draw(text, unit.x - width/2f, unit.y + textHeight + layout.height, width, Align.center, true);
         }
 
         Draw.reset();
@@ -235,11 +281,11 @@ abstract class PlayerComp implements UnitController, Entityc, Syncc, Timerc, Dra
         }
     }
 
-    void sendMessage(String text, Playerc from){
-        sendMessage(text, from, NetClient.colorizeName(from.id(), from.name()));
+    void sendMessage(String text, Player from){
+        sendMessage(text, from, NetClient.colorizeName(from.id(), from.name));
     }
 
-     void sendMessage(String text, Playerc from, String fromName){
+     void sendMessage(String text, Player from, String fromName){
         if(isLocal()){
             if(ui != null){
                 ui.chatfrag.addMessage(text, fromName);

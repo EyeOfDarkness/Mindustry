@@ -16,13 +16,14 @@ import mindustry.world.*;
 import mindustry.world.consumers.*;
 import mindustry.world.meta.*;
 
-import static mindustry.Vars.tilesize;
+import static mindustry.Vars.*;
 
 public class ForceProjector extends Block{
     public final int timerUse = timers++;
     public float phaseUseTime = 350f;
 
     public float phaseRadiusBoost = 80f;
+    public float phaseShieldBoost = 400f;
     public float radius = 101.7f;
     public float breakage = 550f;
     public float cooldownNormal = 1.75f;
@@ -31,9 +32,9 @@ public class ForceProjector extends Block{
     public float basePowerDraw = 0.2f;
     public @Load("@-top") TextureRegion topRegion;
 
-    private static ForceProjectorEntity paramEntity;
-    private static Cons<Shielderc> shieldConsumer = trait -> {
-        if(trait.team() != paramEntity.team() && Intersector.isInsideHexagon(paramEntity.x(), paramEntity.y(), paramEntity.realRadius() * 2f, trait.x(), trait.y())){
+    static ForceBuild paramEntity;
+    static final Cons<Shielderc> shieldConsumer = trait -> {
+        if(trait.team() != paramEntity.team && Intersector.isInsideHexagon(paramEntity.x, paramEntity.y, paramEntity.realRadius() * 2f, trait.x(), trait.y())){
             trait.absorb();
             Fx.absorb.at(trait);
             paramEntity.hit = 1f;
@@ -48,7 +49,6 @@ public class ForceProjector extends Block{
         hasPower = true;
         hasLiquids = true;
         hasItems = true;
-        expanded = true;
         consumes.add(new ConsumeLiquidFilter(liquid -> liquid.temperature <= 0.5f && liquid.flammability < 0.1f, 0.1f)).boost().update(false);
     }
 
@@ -60,9 +60,11 @@ public class ForceProjector extends Block{
     @Override
     public void setStats(){
         super.setStats();
-
+        stats.add(BlockStat.shieldHealth, breakage, StatUnit.none);
+        stats.add(BlockStat.cooldownTime, (int) (breakage / cooldownBrokenBase / 60f), StatUnit.seconds);
         stats.add(BlockStat.powerUse, basePowerDraw * 60f, StatUnit.powerSecond);
         stats.add(BlockStat.boostEffect, phaseRadiusBoost / tilesize, StatUnit.blocks);
+        stats.add(BlockStat.boostEffect, phaseShieldBoost, StatUnit.shieldHealth);
     }
 
     @Override
@@ -71,20 +73,32 @@ public class ForceProjector extends Block{
 
         Draw.color(Pal.gray);
         Lines.stroke(3f);
-        Lines.poly(x * tilesize, y * tilesize, 6, radius);
-        Draw.color(Pal.accent);
+        Lines.poly(x * tilesize + offset, y * tilesize + offset, 6, radius);
+        Draw.color(player.team().color);
         Lines.stroke(1f);
-        Lines.poly(x * tilesize, y * tilesize, 6, radius);
+        Lines.poly(x * tilesize + offset, y * tilesize + offset, 6, radius);
         Draw.color();
     }
 
-    public class ForceProjectorEntity extends TileEntity{
-        boolean broken = true;
-        float buildup = 0f;
-        float radscl = 0f;
-        float hit;
-        float warmup;
-        float phaseHeat;
+    public class ForceBuild extends Building{
+        public boolean broken = true;
+        public float buildup, radscl, hit, warmup, phaseHeat;
+        public ForceDraw drawer;
+
+        @Override
+        public void created(){
+            super.created();
+            drawer = ForceDraw.create();
+            drawer.build = this;
+            drawer.set(x, y);
+            drawer.add();
+        }
+
+        @Override
+        public void onRemoved(){
+            super.onRemoved();
+            drawer.remove();
+        }
 
         @Override
         public void updateTile(){
@@ -119,14 +133,14 @@ public class ForceProjector extends Block{
                 broken = false;
             }
 
-            if(buildup >= breakage && !broken){
+            if(buildup >= breakage + phaseShieldBoost && !broken){
                 broken = true;
                 buildup = breakage;
-                Fx.shieldBreak.at(x, y, radius);
+                Fx.shieldBreak.at(x, y, realRadius(), team.color);
             }
 
             if(hit > 0f){
-                hit -= 1f / 5f * Time.delta();
+                hit -= 1f / 5f * Time.delta;
             }
 
             float realRadius = realRadius();
@@ -137,13 +151,17 @@ public class ForceProjector extends Block{
             }
         }
 
-        float realRadius(){
+        public float realRadius(){
             return (radius + phaseHeat * phaseRadiusBoost) * radscl;
         }
 
         @Override
         public void draw(){
             super.draw();
+
+            if(drawer != null){
+                drawer.set(x, y);
+            }
 
             if(buildup > 0f){
                 Draw.alpha(buildup / breakage * 0.75f);
@@ -152,26 +170,21 @@ public class ForceProjector extends Block{
                 Draw.blend();
                 Draw.reset();
             }
+        }
 
+        public void drawShield(){
             if(!broken){
                 float radius = realRadius();
 
                 Draw.z(Layer.shields);
 
-                Draw.color(Pal.accent);
+                Draw.color(team.color, Color.white, Mathf.clamp(hit));
 
                 if(Core.settings.getBool("animatedshields")){
                     Fill.poly(x, y, 6, radius);
-
-                    Draw.z(Layer.shields + 0.1f);
-
-                    Draw.color(Color.white);
-                    Draw.alpha(hit);
-                    Fill.poly(x, y, 6, radius);
-                    Draw.color();
                 }else{
                     Lines.stroke(1.5f);
-                    Draw.alpha(0.09f + 0.08f * hit);
+                    Draw.alpha(0.09f + Mathf.clamp(0.08f * hit));
                     Fill.poly(x, y, 6, radius);
                     Draw.alpha(1f);
                     Lines.poly(x, y, 6, radius);
@@ -200,6 +213,23 @@ public class ForceProjector extends Block{
             radscl = read.f();
             warmup = read.f();
             phaseHeat = read.f();
+        }
+    }
+
+    @EntityDef(value = {ForceDrawc.class}, serialize = false)
+    @Component(base = true)
+    abstract class ForceDrawComp implements Drawc{
+        transient ForceBuild build;
+
+        @Override
+        public void draw(){
+            build.drawShield();
+        }
+
+        @Replace
+        @Override
+        public float clipSize(){
+            return build.realRadius() * 3f;
         }
     }
 }

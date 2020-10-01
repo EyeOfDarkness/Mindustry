@@ -1,6 +1,5 @@
 package mindustry.world.blocks.distribution;
 
-import arc.*;
 import arc.func.*;
 import arc.graphics.g2d.*;
 import arc.math.*;
@@ -26,8 +25,8 @@ public class Conveyor extends Block implements Autotiler{
     private static final float itemSpace = 0.4f;
     private static final int capacity = 4;
 
-    private final Vec2 tr1 = new Vec2();
-    private final Vec2 tr2 = new Vec2();
+    final Vec2 tr1 = new Vec2();
+    final Vec2 tr2 = new Vec2();
 
     public @Load(value = "@-#1-#2", lengths = {7, 4}) TextureRegion[][] regions;
 
@@ -46,6 +45,7 @@ public class Conveyor extends Block implements Autotiler{
         idleSound = Sounds.conveyor;
         idleSoundVolume = 0.004f;
         unloadable = false;
+        noUpdateDisabled = false;
     }
 
     @Override
@@ -57,23 +57,24 @@ public class Conveyor extends Block implements Autotiler{
     }
 
     @Override
-    public void drawRequestRegion(BuildRequest req, Eachable<BuildRequest> list){
+    public void drawRequestRegion(BuildPlan req, Eachable<BuildPlan> list){
         int[] bits = getTiling(req, list);
 
         if(bits == null) return;
 
         TextureRegion region = regions[bits[0]][0];
-        Draw.rect(region, req.drawx(), req.drawy(), region.getWidth() * bits[1] * Draw.scl, region.getHeight() * bits[2] * Draw.scl, req.rotation * 90);
+        Draw.rect(region, req.drawx(), req.drawy(), region.width * bits[1] * Draw.scl, region.height * bits[2] * Draw.scl, req.rotation * 90);
     }
 
     @Override
     public boolean blends(Tile tile, int rotation, int otherx, int othery, int otherrot, Block otherblock){
-        return otherblock.outputsItems() && lookingAt(tile, rotation, otherx, othery, otherrot, otherblock);
+        return (otherblock.outputsItems() || lookingAt(tile, rotation, otherx, othery, otherblock))
+            && lookingAtEither(tile, rotation, otherx, othery, otherrot, otherblock);
     }
 
     @Override
-    public TextureRegion[] generateIcons(){
-        return new TextureRegion[]{Core.atlas.find(name + "-0-0")};
+    public TextureRegion[] icons(){
+        return new TextureRegion[]{regions[0][0]};
     }
 
     @Override
@@ -82,40 +83,39 @@ public class Conveyor extends Block implements Autotiler{
     }
 
     @Override
-    public Block getReplacement(BuildRequest req, Array<BuildRequest> requests){
+    public Block getReplacement(BuildPlan req, Seq<BuildPlan> requests){
         Boolf<Point2> cont = p -> requests.contains(o -> o.x == req.x + p.x && o.y == req.y + p.y && o.rotation == req.rotation && (req.block instanceof Conveyor || req.block instanceof Junction));
         return cont.get(Geometry.d4(req.rotation)) &&
             cont.get(Geometry.d4(req.rotation - 2)) &&
             req.tile() != null &&
             req.tile().block() instanceof Conveyor &&
-            Mathf.mod(req.tile().rotation() - req.rotation, 2) == 1 ? Blocks.junction : this;
+            Mathf.mod(req.tile().build.rotation - req.rotation, 2) == 1 ? Blocks.junction : this;
     }
 
-    public class ConveyorEntity extends TileEntity{
+    public class ConveyorBuild extends Building{
         //parallel array data
-        Item[] ids = new Item[capacity];
-        float[] xs = new float[capacity];
-        float[] ys = new float[capacity];
+        public Item[] ids = new Item[capacity];
+        public float[] xs = new float[capacity];
+        public float[] ys = new float[capacity];
         //amount of items, always < capacity
-        int len = 0;
+        public int len = 0;
         //next entity
-        @Nullable Tilec next;
-        @Nullable ConveyorEntity nextc;
+        public @Nullable Building next;
+        public @Nullable ConveyorBuild nextc;
         //whether the next conveyor's rotation == tile rotation
-        boolean aligned;
+        public boolean aligned;
 
-        int lastInserted, mid;
-        float minitem = 1;
+        public int lastInserted, mid;
+        public float minitem = 1;
 
-        int blendbits, blending;
-        int blendsclx, blendscly;
+        public int blendbits, blending;
+        public int blendsclx, blendscly;
 
-        float clogHeat = 0f;
+        public float clogHeat = 0f;
 
         @Override
         public void draw(){
-            byte rotation = tile.rotation();
-            int frame = clogHeat <= 0.5f ? (int)(((Time.time() * speed * 8f * timeScale())) % 4) : 0;
+            int frame = enabled && clogHeat <= 0.5f ? (int)(((Time.time() * speed * 8f * timeScale())) % 4) : 0;
 
             //draw extra conveyors facing this one for non-square tiling purposes
             Draw.z(Layer.blockUnder);
@@ -124,7 +124,7 @@ public class Conveyor extends Block implements Autotiler{
                     int dir = rotation - i;
                     float rot = i == 0 ? rotation * 90 : (dir)*90;
 
-                    Draw.rect(sliced(regions[0][frame], i != 0 ? 1 : 2), x + Geometry.d4x(dir) * tilesize*0.75f, y + Geometry.d4y(dir) * tilesize*0.75f, rot);
+                    Draw.rect(sliced(regions[0][frame], i != 0 ? SliceMode.bottom : SliceMode.top), x + Geometry.d4x(dir) * tilesize*0.75f, y + Geometry.d4y(dir) * tilesize*0.75f, rot);
                 }
             }
 
@@ -155,31 +155,30 @@ public class Conveyor extends Block implements Autotiler{
         public void onProximityUpdate(){
             super.onProximityUpdate();
 
-            int[] bits = buildBlending(tile, rotation(), null, true);
+            int[] bits = buildBlending(tile, rotation, null, true);
             blendbits = bits[0];
             blendsclx = bits[1];
             blendscly = bits[2];
             blending = bits[4];
 
-            if(tile.front() != null && tile.front() != null){
-                next = tile.front();
-                nextc = next instanceof ConveyorEntity && next.team() == team ? (ConveyorEntity)next : null;
-                aligned = nextc != null && tile.rotation() == next.tile().rotation();
+            if(front() != null && front() != null){
+                next = front();
+                nextc = next instanceof ConveyorBuild && next.team == team ? (ConveyorBuild)next : null;
+                aligned = nextc != null && rotation == next.rotation;
             }
         }
 
         @Override
-        public void unitOn(Unitc unit){
-            if(clogHeat > 0.5f){
-                return;
-            }
+        public void unitOn(Unit unit){
+
+            if(clogHeat > 0.5f) return;
 
             noSleep();
 
-            float mspeed = speed * tilesize / 2.4f;
+            float mspeed = speed * tilesize * 55f;
             float centerSpeed = 0.1f;
             float centerDstScl = 3f;
-            float tx = Geometry.d4[tile.rotation()].x, ty = Geometry.d4[tile.rotation()].y;
+            float tx = Geometry.d4x(rotation), ty = Geometry.d4y(rotation);
 
             float centerx = 0f, centery = 0f;
 
@@ -209,10 +208,11 @@ public class Conveyor extends Block implements Autotiler{
             }
 
             float nextMax = aligned ? 1f - Math.max(itemSpace - nextc.minitem, 0) : 1f;
+            float moved = speed * edelta();
 
             for(int i = len - 1; i >= 0; i--){
                 float nextpos = (i == len - 1 ? 100f : ys[i + 1]) - itemSpace;
-                float maxmove = Mathf.clamp(nextpos - ys[i], 0, speed * delta());
+                float maxmove = Mathf.clamp(nextpos - ys[i], 0, moved);
 
                 ys[i] += maxmove;
 
@@ -263,7 +263,7 @@ public class Conveyor extends Block implements Autotiler{
 
         @Override
         public void getStackOffset(Item item, Vec2 trns){
-            trns.trns(tile.rotdeg() + 180f, tilesize / 2f);
+            trns.trns(rotdeg() + 180f, tilesize / 2f);
         }
 
         @Override
@@ -287,19 +287,19 @@ public class Conveyor extends Block implements Autotiler{
         }
 
         @Override
-        public boolean acceptItem(Tilec source, Item item){
+        public boolean acceptItem(Building source, Item item){
             if(len >= capacity) return false;
-            Tile facing = Edges.getFacingEdge(source.tile(), tile);
-            int direction = Math.abs(facing.relativeTo(tile.x, tile.y) - tile.rotation());
-            return (((direction == 0) && minitem >= itemSpace) || ((direction % 2 == 1) && minitem > 0.7f)) && !(source.block().rotate && (source.rotation() + 2) % 4 == tile.rotation());
+            Tile facing = Edges.getFacingEdge(source.tile, tile);
+            int direction = Math.abs(facing.relativeTo(tile.x, tile.y) - rotation);
+            return (((direction == 0) && minitem >= itemSpace) || ((direction % 2 == 1) && minitem > 0.7f)) && !(source.block.rotate && (source.rotation + 2) % 4 == rotation);
         }
 
         @Override
-        public void handleItem(Tilec source, Item item){
+        public void handleItem(Building source, Item item){
             if(len >= capacity) return;
 
-            byte r = tile.rotation();
-            Tile facing = Edges.getFacingEdge(source.tile(), tile);
+            int r = rotation;
+            Tile facing = Edges.getFacingEdge(source.tile, tile);
             int ang = ((facing.relativeTo(tile.x, tile.y) - r));
             float x = (ang == -1 || ang == 3) ? 1 : (ang == 1 || ang == -3) ? -1 : 0;
 
@@ -337,7 +337,7 @@ public class Conveyor extends Block implements Autotiler{
 
             for(int i = 0; i < amount; i++){
                 int val = read.i();
-                byte id = (byte)(val >> 24);
+                short id = (short)(((byte)(val >> 24)) & 0xff);
                 float x = (float)((byte)(val >> 16)) / 127f;
                 float y = ((float)((byte)(val >> 8)) + 128f) / 255f;
                 if(i < capacity){
@@ -349,7 +349,7 @@ public class Conveyor extends Block implements Autotiler{
         }
 
 
-        final void add(int o){
+        public final void add(int o){
             for(int i = Math.max(o + 1, len); i > o; i--){
                 ids[i] = ids[i - 1];
                 xs[i] = xs[i - 1];
@@ -359,7 +359,7 @@ public class Conveyor extends Block implements Autotiler{
             len++;
         }
 
-        final void remove(int o){
+        public final void remove(int o){
             for(int i = o; i < len - 1; i++){
                 ids[i] = ids[i + 1];
                 xs[i] = xs[i + 1];

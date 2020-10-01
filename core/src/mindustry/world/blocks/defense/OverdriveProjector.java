@@ -43,7 +43,7 @@ public class OverdriveProjector extends Block{
 
     @Override
     public void drawPlace(int x, int y, int rotation, boolean valid){
-        Drawf.dashCircle(x * tilesize + offset(), y * tilesize + offset(), range, Pal.accent);
+        Drawf.dashCircle(x * tilesize + offset, y * tilesize + offset, range, Pal.accent);
     }
 
     @Override
@@ -60,26 +60,26 @@ public class OverdriveProjector extends Block{
         }
     }
 
-    public class OverdriveEntity extends TileEntity{
+    public class OverdriveBuild extends Building{
         float heat;
         float charge = Mathf.random(reload);
         float phaseHeat;
 
         @Override
         public void drawLight(){
-            Drawf.light(x, y, 50f * efficiency(), baseColor, 0.7f * efficiency());
+            Drawf.light(team, x, y, 50f * efficiency(), baseColor, 0.7f * efficiency());
         }
 
         @Override
         public void updateTile(){
             heat = Mathf.lerpDelta(heat, consValid() ? 1f : 0f, 0.08f);
-            charge += heat * Time.delta();
+            charge += heat * Time.delta;
 
             if(hasBoost){
-                phaseHeat = Mathf.lerpDelta(phaseHeat, Mathf.num(cons().optionalValid()), 0.1f);
+                phaseHeat = Mathf.lerpDelta(phaseHeat, Mathf.num(cons.optionalValid()), 0.1f);
             }
 
-            if(timer(timerUse, useTime) && efficiency() > 0){
+            if(timer(timerUse, useTime) && efficiency() > 0 && consValid()){
                 consume();
             }
 
@@ -96,7 +96,7 @@ public class OverdriveProjector extends Block{
         public void drawSelect(){
             float realRange = range + phaseHeat * phaseRangeBoost;
 
-            indexer.eachBlock(this, realRange, other -> other.block().canOverdrive, other -> Drawf.selected(other, Tmp.c1.set(baseColor).a(Mathf.absin(4f, 1f))));
+            indexer.eachBlock(this, realRange, other -> other.block.canOverdrive, other -> Drawf.selected(other, Tmp.c1.set(baseColor).a(Mathf.absin(4f, 1f))));
 
             Drawf.dashCircle(x, y, realRange, baseColor);
         }

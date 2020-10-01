@@ -5,6 +5,7 @@ import arc.func.*;
 import arc.struct.*;
 import arc.util.ArcAnnotate.*;
 import arc.util.*;
+import arc.util.Log.*;
 import arc.util.pooling.Pool.*;
 import arc.util.pooling.*;
 import mindustry.*;
@@ -18,32 +19,23 @@ import static mindustry.Vars.*;
 import static mindustry.game.EventType.*;
 
 public class Administration{
-    /** All player info. Maps UUIDs to info. This persists throughout restarts. */
+    public Seq<String> bannedIPs = new Seq<>();
+    public Seq<String> whitelist = new Seq<>();
+    public Seq<ChatFilter> chatFilters = new Seq<>();
+    public Seq<ActionFilter> actionFilters = new Seq<>();
+    public Seq<String> subnetBans = new Seq<>();
+    public ObjectMap<String, Long> kickedIPs = new ObjectMap<>();
+
+    /** All player info. Maps UUIDs to info. This persists throughout restarts. Do not access directly. */
     private ObjectMap<String, PlayerInfo> playerInfo = new ObjectMap<>();
-    private Array<String> bannedIPs = new Array<>();
-    private Array<String> whitelist = new Array<>();
-    private Array<ChatFilter> chatFilters = new Array<>();
-    private Array<ActionFilter> actionFilters = new Array<>();
-    private Array<String> subnetBans = new Array<>();
-    private IntIntMap lastPlaced = new IntIntMap();
 
     public Administration(){
         load();
 
-        Events.on(ResetEvent.class, e -> lastPlaced = new IntIntMap());
-
-        //keep track of who placed what on the server
-        Events.on(BlockBuildEndEvent.class, e -> {
-            //players should be able to configure their own tiles
-            if(net.server() && e.unit != null && e.unit.isPlayer()){
-                lastPlaced.put(e.tile.pos(), e.unit.getPlayer().id());
-            }
-        });
-
         //anti-spam
         addChatFilter((player, message) -> {
             long resetTime = Config.messageRateLimit.num() * 1000;
-            if(Config.antiSpam.bool() && !player.isLocal() && !player.admin()){
+            if(Config.antiSpam.bool() && !player.isLocal() && !player.admin){
                 //prevent people from spamming messages quickly
                 if(resetTime > 0 && Time.timeSinceMillis(player.getInfo().lastMessageTime) < resetTime){
                     //supress message
@@ -51,7 +43,7 @@ public class Administration{
                     player.getInfo().messageInfractions ++;
                     //kick player for spamming and prevent connection if they've done this several times
                     if(player.getInfo().messageInfractions >= Config.messageSpamKick.num() && Config.messageSpamKick.num() != 0){
-                        player.con().kick("You have been kicked for spamming.", 1000 * 60 * 2);
+                        player.con.kick("You have been kicked for spamming.", 1000 * 60 * 2);
                     }
                     return null;
                 }else{
@@ -72,22 +64,20 @@ public class Administration{
         });
 
         //block interaction rate limit
+        //TODO when someone disconnects, a different player is mistakenly kicked for spamming actions
         addActionFilter(action -> {
             if(action.type != ActionType.breakBlock &&
                 action.type != ActionType.placeBlock &&
-                action.type != ActionType.tapTile &&
-                Config.antiSpam.bool() &&
-                //make sure players can configure their own stuff, e.g. in schematics
-                lastPlaced.get(action.tile.pos(), -1) != action.player.id()){
+                Config.antiSpam.bool()){
 
                 Ratekeeper rate = action.player.getInfo().rate;
                 if(rate.allow(Config.interactRateWindow.num() * 1000, Config.interactRateLimit.num())){
                     return true;
                 }else{
                     if(rate.occurences > Config.interactRateKick.num()){
-                        player.kick("You are interacting with too many blocks.", 1000 * 30);
-                    }else{
-                        player.sendMessage("[scarlet]You are interacting with blocks too quickly.");
+                        action.player.kick("You are interacting with too many blocks.", 1000 * 30);
+                    }else if(action.player.getInfo().messageTimer.get(60f * 2f)){
+                        action.player.sendMessage("[scarlet]You are interacting with blocks too quickly.");
                     }
 
                     return false;
@@ -97,7 +87,21 @@ public class Administration{
         });
     }
 
-    public Array<String> getSubnetBans(){
+    /** @return time at which a player would be pardoned for a kick (0 means they were never kicked) */
+    public long getKickTime(String uuid, String ip){
+        return Math.max(getInfo(uuid).lastKicked, kickedIPs.get(ip, 0L));
+    }
+
+    /** Sets up kick duration for a player. */
+    public void handleKicked(String uuid, String ip, long duration){
+        kickedIPs.put(ip, Math.max(kickedIPs.get(ip, 0L), Time.millis() + duration));
+
+        PlayerInfo info = getInfo(uuid);
+        info.timesKicked++;
+        info.lastKicked = Math.max(Time.millis() + duration, info.lastKicked);
+    }
+
+    public Seq<String> getSubnetBans(){
         return subnetBans;
     }
 
@@ -123,7 +127,7 @@ public class Administration{
     }
 
     /** Filters out a chat message. */
-    public @Nullable String filterMessage(Playerc player, String message){
+    public @Nullable String filterMessage(Player player, String message){
         String current = message;
         for(ChatFilter f : chatFilters){
             current = f.filter(player, current);
@@ -138,7 +142,10 @@ public class Administration{
     }
 
     /** @return whether this action is allowed by the action filters. */
-    public boolean allowAction(Playerc player, ActionType type, Tile tile, Cons<PlayerAction> setter){
+    public boolean allowAction(Player player, ActionType type, Tile tile, Cons<PlayerAction> setter){
+        //some actions are done by the server (null player) and thus are always allowed
+        if(player == null) return true;
+
         PlayerAction act = Pools.obtain(PlayerAction.class, PlayerAction::new);
         setter.get(act.set(player, type, tile));
         for(ActionFilter filter : actionFilters){
@@ -159,7 +166,7 @@ public class Administration{
         Core.settings.put("playerlimit", limit);
     }
 
-    public boolean getStrict(){
+    public boolean isStrict(){
         return Config.strict.bool();
     }
 
@@ -256,8 +263,8 @@ public class Administration{
     /**
      * Returns list of all players with admin status
      */
-    public Array<PlayerInfo> getAdmins(){
-        Array<PlayerInfo> result = new Array<>();
+    public Seq<PlayerInfo> getAdmins(){
+        Seq<PlayerInfo> result = new Seq<>();
         for(PlayerInfo info : playerInfo.values()){
             if(info.admin){
                 result.add(info);
@@ -269,8 +276,8 @@ public class Administration{
     /**
      * Returns list of all players which are banned
      */
-    public Array<PlayerInfo> getBanned(){
-        Array<PlayerInfo> result = new Array<>();
+    public Seq<PlayerInfo> getBanned(){
+        Seq<PlayerInfo> result = new Seq<>();
         for(PlayerInfo info : playerInfo.values()){
             if(info.banned){
                 result.add(info);
@@ -282,18 +289,18 @@ public class Administration{
     /**
      * Returns all banned IPs. This does not include the IPs of ID-banned players.
      */
-    public Array<String> getBannedIPs(){
+    public Seq<String> getBannedIPs(){
         return bannedIPs;
     }
 
     /**
-     * Makes a player an admin. Returns whether this player was already an admin.
+     * Makes a player an admin.
+     * @return whether this player was already an admin.
      */
     public boolean adminPlayer(String id, String usid){
         PlayerInfo info = getCreateInfo(id);
 
-        if(info.admin && info.adminUsid != null && info.adminUsid.equals(usid))
-            return false;
+        if(info.admin && info.adminUsid != null && info.adminUsid.equals(usid)) return false;
 
         info.adminUsid = usid;
         info.admin = true;
@@ -303,13 +310,13 @@ public class Administration{
     }
 
     /**
-     * Makes a player no longer an admin. Returns whether this player was an admin in the first place.
+     * Makes a player no longer an admin.
+     * @return whether this player was an admin in the first place.
      */
     public boolean unAdminPlayer(String id){
         PlayerInfo info = getCreateInfo(id);
 
-        if(!info.admin)
-            return false;
+        if(!info.admin) return false;
 
         info.admin = false;
         save();
@@ -384,8 +391,8 @@ public class Administration{
         return result;
     }
 
-    public Array<PlayerInfo> findByIPs(String ip){
-        Array<PlayerInfo> result = new Array<>();
+    public Seq<PlayerInfo> findByIPs(String ip){
+        Seq<PlayerInfo> result = new Seq<>();
 
         for(PlayerInfo info : playerInfo.values()){
             if(info.ips.contains(ip, false)){
@@ -413,8 +420,8 @@ public class Administration{
         return null;
     }
 
-    public Array<PlayerInfo> getWhitelisted(){
-        return playerInfo.values().toArray().select(p -> isWhitelisted(p.id, p.adminUsid));
+    public Seq<PlayerInfo> getWhitelisted(){
+        return playerInfo.values().toSeq().select(p -> isWhitelisted(p.id, p.adminUsid));
     }
 
     private PlayerInfo getCreateInfo(String id){
@@ -440,9 +447,9 @@ public class Administration{
         if(!loadLegacy()){
             //load default data
             playerInfo = Core.settings.getJson("player-data", ObjectMap.class, ObjectMap::new);
-            bannedIPs = Core.settings.getJson("ip-bans", Array.class, Array::new);
-            whitelist = Core.settings.getJson("whitelist-ids", Array.class, Array::new);
-            subnetBans = Core.settings.getJson("banned-subnets", Array.class, Array::new);
+            bannedIPs = Core.settings.getJson("ip-bans", Seq.class, Seq::new);
+            whitelist = Core.settings.getJson("whitelist-ids", Seq.class, Seq::new);
+            subnetBans = Core.settings.getJson("banned-subnets", Seq.class, Seq::new);
         }else{
             //save over loaded legacy data
             save();
@@ -567,7 +574,11 @@ public class Administration{
         socketInputAddress("The bind address for socket input.", "localhost", () -> Events.fire(Trigger.socketConfigChanged)),
         allowCustomClients("Whether custom clients are allowed to connect.", !headless, "allow-custom"),
         whitelist("Whether the whitelist is used.", false),
-        motd("The message displayed to people on connection.", "off");
+        motd("The message displayed to people on connection.", "off"),
+        autosave("Whether the periodically save the map when playing.", false),
+        autosaveAmount("The maximum amount of autosaves. Older ones get replaced.", 10),
+        autosaveSpacing("Spacing between autosaves in seconds.", 60 * 5),
+        debug("Enable debug logging", false, () -> Log.setLogLevel(debug() ? LogLevel.debug : LogLevel.info));
 
         public static final Config[] all = values();
 
@@ -626,13 +637,17 @@ public class Administration{
             Core.settings.put(key, value);
             changed.run();
         }
+
+        private static boolean debug(){
+            return Config.debug.bool();
+        }
     }
 
     public static class PlayerInfo{
         public String id;
         public String lastName = "<unknown>", lastIP = "<unknown>";
-        public Array<String> ips = new Array<>();
-        public Array<String> names = new Array<>();
+        public Seq<String> ips = new Seq<>();
+        public Seq<String> names = new Seq<>();
         public String adminUsid;
         public int timesKicked;
         public int timesJoined;
@@ -643,6 +658,7 @@ public class Administration{
         public transient String lastSentMessage;
         public transient int messageInfractions;
         public transient Ratekeeper rate = new Ratekeeper();
+        public transient Interval messageTimer = new Interval();
 
         PlayerInfo(String id){
             this.id = id;
@@ -655,7 +671,7 @@ public class Administration{
     /** Handles chat messages from players and changes their contents. */
     public interface ChatFilter{
         /** @return the filtered message; a null string signals that the message should not be sent. */
-        @Nullable String filter(Playerc player, String message);
+        @Nullable String filter(Player player, String message);
     }
 
     /** Allows or disallows player actions. */
@@ -679,7 +695,7 @@ public class Administration{
     /** Defines a (potentially dangerous) action that a player has done in the world.
      * These objects are pooled; do not cache them! */
     public static class PlayerAction implements Poolable{
-        public @NonNull Playerc player;
+        public @NonNull Player player;
         public @NonNull ActionType type;
         public @NonNull Tile tile;
 
@@ -694,7 +710,7 @@ public class Administration{
         public @Nullable Item item;
         public int itemAmount;
 
-        public PlayerAction set(Playerc player, ActionType type, Tile tile){
+        public PlayerAction set(Player player, ActionType type, Tile tile){
             this.player = player;
             this.type = type;
             this.tile = tile;
@@ -714,7 +730,7 @@ public class Administration{
     }
 
     public enum ActionType{
-        breakBlock, placeBlock, rotate, configure, tapTile, withdrawItem, depositItem
+        breakBlock, placeBlock, rotate, configure, withdrawItem, depositItem
     }
 
 }

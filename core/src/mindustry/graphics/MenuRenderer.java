@@ -30,7 +30,7 @@ public class MenuRenderer implements Disposable{
     private float time = 0f;
     private float flyerRot = 45f;
     private int flyers = Mathf.chance(0.2) ? Mathf.random(35) : Mathf.random(15);
-    private UnitType flyerType = Structs.select(UnitTypes.wraith, UnitTypes.wraith, UnitTypes.ghoul, UnitTypes.phantom, UnitTypes.phantom, UnitTypes.revenant);
+    private UnitType flyerType = Structs.select(UnitTypes.flare, UnitTypes.flare, UnitTypes.horizon, UnitTypes.mono, UnitTypes.poly, UnitTypes.mega, UnitTypes.zenith);
 
     public MenuRenderer(){
         Time.mark();
@@ -42,7 +42,7 @@ public class MenuRenderer implements Disposable{
     private void generate(){
         world.beginMapLoad();
         Tiles tiles = world.resize(width, height);
-        Array<Block> ores = content.blocks().select(b -> b instanceof OreBlock);
+        Seq<Block> ores = content.blocks().select(b -> b instanceof OreBlock);
         shadows = new FrameBuffer(width, height);
         int offset = Mathf.random(100000);
         Simplex s1 = new Simplex(offset);
@@ -50,21 +50,21 @@ public class MenuRenderer implements Disposable{
         Simplex s3 = new Simplex(offset + 2);
         RidgedPerlin rid = new RidgedPerlin(1 + offset, 1);
         Block[] selected = Structs.select(
-            new Block[]{Blocks.sand, Blocks.sandRocks},
-            new Block[]{Blocks.shale, Blocks.shaleRocks},
-            new Block[]{Blocks.ice, Blocks.icerocks},
-            new Block[]{Blocks.sand, Blocks.sandRocks},
-            new Block[]{Blocks.shale, Blocks.shaleRocks},
-            new Block[]{Blocks.ice, Blocks.icerocks},
+            new Block[]{Blocks.sand, Blocks.sandWall},
+            new Block[]{Blocks.shale, Blocks.shaleWall},
+            new Block[]{Blocks.ice, Blocks.iceWall},
+            new Block[]{Blocks.sand, Blocks.sandWall},
+            new Block[]{Blocks.shale, Blocks.shaleWall},
+            new Block[]{Blocks.ice, Blocks.iceWall},
             new Block[]{Blocks.moss, Blocks.sporePine}
         );
         Block[] selected2 = Structs.select(
-            new Block[]{Blocks.ignarock, Blocks.duneRocks},
-            new Block[]{Blocks.ignarock, Blocks.duneRocks},
-            new Block[]{Blocks.stone, Blocks.rocks},
-            new Block[]{Blocks.stone, Blocks.rocks},
-            new Block[]{Blocks.moss, Blocks.sporerocks},
-            new Block[]{Blocks.salt, Blocks.saltRocks}
+            new Block[]{Blocks.basalt, Blocks.duneWall},
+            new Block[]{Blocks.basalt, Blocks.duneWall},
+            new Block[]{Blocks.stone, Blocks.stoneWall},
+            new Block[]{Blocks.stone, Blocks.stoneWall},
+            new Block[]{Blocks.moss, Blocks.sporeWall},
+            new Block[]{Blocks.salt, Blocks.saltWall}
         );
 
         Block ore1 = ores.random();
@@ -113,7 +113,7 @@ public class MenuRenderer implements Disposable{
                     if(heat > base){
                         ore = Blocks.air;
                         wall = Blocks.air;
-                        floor = Blocks.ignarock;
+                        floor = Blocks.basalt;
 
                         if(heat > base + 0.1){
                             floor = Blocks.hotrock;
@@ -146,7 +146,7 @@ public class MenuRenderer implements Disposable{
                         floor = Mathf.chance(0.2) ? Blocks.sporeMoss : Blocks.moss;
 
                         if(wall != Blocks.air){
-                            wall = Blocks.sporerocks;
+                            wall = Blocks.sporeWall;
                         }
                     }
                 }
@@ -206,7 +206,7 @@ public class MenuRenderer implements Disposable{
     }
 
     public void render(){
-        time += Time.delta();
+        time += Time.delta;
         float scaling = Math.max(Scl.scl(4f), Math.max(Core.graphics.getWidth() / ((width - 1f) * tilesize), Core.graphics.getHeight() / ((height - 1f) * tilesize)));
         camera.position.set(width * tilesize / 2f, height * tilesize / 2f);
         camera.resize(Core.graphics.getWidth() / scaling,
@@ -243,7 +243,7 @@ public class MenuRenderer implements Disposable{
 
         TextureRegion icon = flyerType.icon(Cicon.full);
 
-        float size = Math.max(icon.getWidth(), icon.getHeight()) * Draw.scl * 1.6f;
+        float size = Math.max(icon.width, icon.height) * Draw.scl * 1.6f;
 
         flyers((x, y) -> {
             Draw.rect(flyerType.region, x - 12f, y - 13f, flyerRot - 90);

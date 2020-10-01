@@ -1,6 +1,7 @@
 package mindustry.ai;
 
 import arc.*;
+import arc.math.*;
 import arc.struct.*;
 import arc.util.ArcAnnotate.*;
 import arc.util.*;
@@ -19,12 +20,12 @@ import java.io.*;
 import static mindustry.Vars.tilesize;
 
 public class BaseRegistry{
-    public Array<BasePart> cores = new Array<>();
-    public Array<BasePart> parts = new Array<>();
-    public ObjectMap<Content, Array<BasePart>> reqParts = new ObjectMap<>();
+    public Seq<BasePart> cores = new Seq<>();
+    public Seq<BasePart> parts = new Seq<>();
+    public ObjectMap<Content, Seq<BasePart>> reqParts = new ObjectMap<>();
 
-    public Array<BasePart> forResource(Content item){
-        return reqParts.get(item, Array::new);
+    public Seq<BasePart> forResource(Content item){
+        return reqParts.get(item, Seq::new);
     }
 
     public void load(){
@@ -62,13 +63,13 @@ public class BaseRegistry{
 
                     //calculate averages
                     if(tile.block instanceof Drill || tile.block instanceof Pump){
-                        Tmp.v1.add(tile.x*tilesize + tile.block.offset(), tile.y*tilesize + tile.block.offset());
+                        Tmp.v1.add(tile.x*tilesize + tile.block.offset, tile.y*tilesize + tile.block.offset);
                         drills ++;
                     }
                 }
                 schem.tiles.removeAll(s -> s.block.buildVisibility == BuildVisibility.sandboxOnly);
 
-                part.tier = schem.tiles.sumf(s -> s.block.buildCost / s.block.buildCostMultiplier);
+                part.tier = schem.tiles.sumf(s -> Mathf.pow(s.block.buildCost / s.block.buildCostMultiplier, 1.2f));
 
                 if(part.core != null){
                     cores.add(part);
@@ -85,14 +86,14 @@ public class BaseRegistry{
                     part.centerY = part.schematic.height/2;
                 }
 
-                if(part.required != null) reqParts.get(part.required, Array::new).add(part);
+                if(part.required != null) reqParts.get(part.required, Seq::new).add(part);
 
             }catch(IOException e){
                 throw new RuntimeException(e);
             }
         }
 
-        cores.sort(Structs.comps(Structs.comparingFloat(b -> b.core.health), Structs.comparingFloat(b -> b.tier)));
+        cores.sort(b -> b.tier);
         parts.sort();
         reqParts.each((key, arr) -> arr.sort());
     }

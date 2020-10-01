@@ -7,9 +7,24 @@ import mindustry.ui.dialogs.JoinDialog.*;
 import java.io.*;
 
 public class LegacyIO{
+    /** Maps old unit names to new ones. */
+    public static final StringMap unitMap = StringMap.of(
+    "titan", "mace",
+    "chaos-array", "scepter",
+    "eradicator", "reign",
+    "eruptor", "atrax",
+    "wraith", "flare",
+    "ghoul", "horizon",
+    "revenant", "zenith",
+    "lich", "antumbra",
+    "reaper", "eclipse",
+    "draug", "mono",
+    "phantom", "poly",
+    "spirit", "poly"
+    );
 
-    public static Array<Server> readServers(){
-        Array<Server> arr = new Array<>();
+    public static Seq<Server> readServers(){
+        Seq<Server> arr = new Seq<>();
 
         try{
             byte[] bytes = Core.settings.getBytes("server-list");

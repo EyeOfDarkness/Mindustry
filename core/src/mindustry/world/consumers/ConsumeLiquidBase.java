@@ -22,7 +22,7 @@ public abstract class ConsumeLiquidBase extends Consume{
         return ConsumeType.liquid;
     }
 
-    protected float use(Tilec entity){
-        return Math.min(amount * entity.delta(), entity.block().liquidCapacity);
+    protected float use(Building entity){
+        return Math.min(amount * entity.delta(), entity.block.liquidCapacity);
     }
 }

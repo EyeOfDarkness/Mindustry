@@ -27,7 +27,7 @@ public class Annotations{
         boolean clamped() default false;
     }
 
-    /** Indicates that a field will not be read from the server when syncing. */
+    /** Indicates that a field will not be read from the server when syncing the local player state. */
     @Target({ElementType.FIELD})
     @Retention(RetentionPolicy.SOURCE)
     public @interface SyncLocal{
@@ -50,6 +50,9 @@ public class Annotations{
     @Target(ElementType.TYPE)
     @Retention(RetentionPolicy.SOURCE)
     public @interface Component{
+        /** Whether to generate a base class for this components.
+         * An entity cannot have two base classes, so only one component can have base be true. */
+        boolean base() default false;
     }
 
     /** Indicates that a method is implemented by the annotation processor. */
@@ -123,6 +126,13 @@ public class Annotations{
         int[] lengths() default {};
         /** Fallback string used to replace "@" (the block name) if the region isn't found. */
         String fallback() default "error";
+    }
+
+    /** Registers a statement for auto serialization. */
+    @Target(ElementType.TYPE)
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface RegisterStatement{
+        String value();
     }
 
     @Target(ElementType.TYPE)
@@ -224,7 +234,7 @@ public class Annotations{
         /** The local locations where this method is called locally, when invoked. */
         Loc called() default Loc.none;
 
-        /** Whether to forward this packet to all other clients upon recieval. Client only. */
+        /** Whether to forward this packet to all other clients upon receival. Client only. */
         boolean forward() default false;
 
         /**

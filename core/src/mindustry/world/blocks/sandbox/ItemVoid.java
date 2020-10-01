@@ -11,13 +11,13 @@ public class ItemVoid extends Block{
         update = solid = acceptsItems = true;
     }
 
-    public class ItemVoidEntity extends TileEntity{
+    public class ItemVoidBuild extends Building{
         @Override
-        public void handleItem(Tilec source, Item item){}
+        public void handleItem(Building source, Item item){}
 
         @Override
-        public boolean acceptItem(Tilec source, Item item){
-            return true;
+        public boolean acceptItem(Building source, Item item){
+            return enabled;
         }
     }
 }

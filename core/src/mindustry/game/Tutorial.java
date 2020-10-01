@@ -23,15 +23,15 @@ public class Tutorial{
     private static final int mineCopper = 18;
     private static final int blocksToBreak = 3, blockOffset = -6;
 
-    private ObjectSet<String> events = new ObjectSet<>();
-    private ObjectIntMap<Block> blocksPlaced = new ObjectIntMap<>();
-    private int sentence;
+    ObjectSet<String> events = new ObjectSet<>();
+    ObjectIntMap<Block> blocksPlaced = new ObjectIntMap<>();
+    int sentence;
     public TutorialStage stage = TutorialStage.values()[0];
 
     public Tutorial(){
         Events.on(BlockBuildEndEvent.class, event -> {
             if(!event.breaking){
-                blocksPlaced.getAndIncrement(event.tile.block(), 0, 1);
+                blocksPlaced.increment(event.tile.block(), 1);
             }
         });
 
@@ -162,7 +162,7 @@ public class Tutorial{
         },
         withdraw(() -> event("withdraw")){
             void begin(){
-                state.teams.playerCores().first().items().add(Items.copper, 10);
+                state.teams.playerCores().first().items.add(Items.copper, 10);
             }
         },
         deposit(() -> event("deposit")),
@@ -195,7 +195,7 @@ public class Tutorial{
 
         protected String line = "";
         protected final Func<String, String> text;
-        protected Array<String> sentences;
+        protected Seq<String> sentences;
         protected final Boolp done;
 
         TutorialStage(Func<String, String> text, Boolp done){
@@ -218,7 +218,7 @@ public class Tutorial{
 
         void load(){
             this.line = Core.bundle.has("tutorial." + name() + ".mobile") && mobile ? "tutorial." + name() + ".mobile" : "tutorial." + name();
-            this.sentences = Array.select(Core.bundle.get(line).split("\n"), s -> !s.isEmpty());
+            this.sentences = Seq.select(Core.bundle.get(line).split("\n"), s -> !s.isEmpty());
         }
 
         /** called every frame when this stage is active.*/
@@ -239,7 +239,7 @@ public class Tutorial{
         //utility
 
         static void placeBlocks(){
-            Tilec core = state.teams.playerCores().first();
+            Building core = state.teams.playerCores().first();
             for(int i = 0; i < blocksToBreak; i++){
                 world.tile(core.tile().x + blockOffset, core.tile().y + i).remove();
                 world.tile(core.tile().x + blockOffset, core.tile().y + i).setBlock(Blocks.scrapWall, state.rules.defaultTeam);
@@ -247,10 +247,10 @@ public class Tutorial{
         }
 
         static boolean blocksBroken(){
-            Tilec core = state.teams.playerCores().first();
+            Building core = state.teams.playerCores().first();
 
             for(int i = 0; i < blocksToBreak; i++){
-                if(world.tile(core.tile().x + blockOffset, core.tile().y + i).block() == Blocks.scrapWall){
+                if(world.tile(core.tile.x + blockOffset, core.tile.y + i).block() == Blocks.scrapWall){
                     return false;
                 }
             }
@@ -270,7 +270,7 @@ public class Tutorial{
         }
 
         static int item(Item item){
-            return state.rules.defaultTeam.data().noCores() ? 0 : state.rules.defaultTeam.core().items().get(item);
+            return state.rules.defaultTeam.data().noCores() ? 0 : state.rules.defaultTeam.core().items.get(item);
         }
 
         static boolean toggled(String name){

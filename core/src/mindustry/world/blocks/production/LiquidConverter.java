@@ -30,7 +30,7 @@ public class LiquidConverter extends GenericCrafter{
         stats.add(BlockStat.output, outputLiquid.liquid, outputLiquid.amount * craftTime, false);
     }
 
-    public class LiquidConverterEntity extends GenericCrafterEntity{
+    public class LiquidConverterBuild extends GenericCrafterBuild{
         @Override
         public void drawLight(){
             if(hasLiquids && drawLiquidLight && outputLiquid.liquid.lightColor.a > 0.001f){
@@ -43,14 +43,13 @@ public class LiquidConverter extends GenericCrafter{
             ConsumeLiquidBase cl = consumes.get(ConsumeType.liquid);
 
             if(cons.valid()){
-                float use = Math.min(cl.amount * delta(), liquidCapacity - liquids.get(outputLiquid.liquid)) * efficiency();
+                float use = Math.min(cl.amount * edelta(), liquidCapacity - liquids.get(outputLiquid.liquid));
 
-                useContent(outputLiquid.liquid);
-                progress += use / cl.amount / craftTime;
+                progress += use / cl.amount;
                 liquids.add(outputLiquid.liquid, use);
-                if(progress >= 1f){
+                if(progress >= craftTime){
                     consume();
-                    progress = 0f;
+                    progress %= craftTime;
                 }
             }
 

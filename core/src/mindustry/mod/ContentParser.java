@@ -7,7 +7,6 @@ import arc.files.*;
 import arc.func.*;
 import arc.graphics.*;
 import arc.mock.*;
-import arc.struct.Array;
 import arc.struct.*;
 import arc.util.ArcAnnotate.*;
 import arc.util.*;
@@ -28,6 +27,7 @@ import mindustry.type.*;
 import mindustry.world.*;
 import mindustry.world.blocks.*;
 import mindustry.world.consumers.*;
+import mindustry.world.draw.*;
 import mindustry.world.meta.*;
 
 import java.lang.reflect.*;
@@ -35,9 +35,9 @@ import java.lang.reflect.*;
 @SuppressWarnings("unchecked")
 public class ContentParser{
     private static final boolean ignoreUnknownFields = true;
-    private ObjectMap<Class<?>, ContentType> contentTypes = new ObjectMap<>();
+    ObjectMap<Class<?>, ContentType> contentTypes = new ObjectMap<>();
 
-    private ObjectMap<Class<?>, FieldParser> classParsers = new ObjectMap<Class<?>, FieldParser>(){{
+    ObjectMap<Class<?>, FieldParser> classParsers = new ObjectMap<>(){{
         put(Effect.class, (type, data) -> field(Fx.class, data));
         put(Schematic.class, (type, data) -> {
             Object result = fieldOpt(Loadouts.class, data);
@@ -45,7 +45,7 @@ public class ContentParser{
                 return result;
             }else{
                 String str = data.asString();
-                if(str.startsWith(Schematics.base64Header)){
+                if(str.startsWith(Vars.schematicBaseStart)){
                     return Schematics.readBase64(str);
                 }else{
                     return Schematics.read(Vars.tree.get("schematics/" + str + "." + Vars.schematicExtension));
@@ -87,7 +87,7 @@ public class ContentParser{
             return sound;
         });
         put(Objectives.Objective.class, (type, data) -> {
-            Class<? extends Objectives.Objective> oc = data.has("type") ? resolve(data.getString("type"), "mindustry.game.Objectives") : SectorWave.class;
+            Class<? extends Objectives.Objective> oc = data.has("type") ? resolve(data.getString("type"), "mindustry.game.Objectives") : SectorComplete.class;
             data.remove("type");
             Objectives.Objective obj = make(oc);
             readFields(obj, data);
@@ -102,10 +102,10 @@ public class ContentParser{
     }};
     /** Stores things that need to be parsed fully, e.g. reading fields of content.
      * This is done to accomodate binding of content names first.*/
-    private Array<Runnable> reads = new Array<>();
-    private Array<Runnable> postreads = new Array<>();
+    private Seq<Runnable> reads = new Seq<>();
+    private Seq<Runnable> postreads = new Seq<>();
     private ObjectSet<Object> toBeParsed = new ObjectSet<>();
-    private LoadedMod currentMod;
+    LoadedMod currentMod;
     private Content currentContent;
 
     private Json parser = new Json(){
@@ -141,6 +141,11 @@ public class ContentParser{
                     }else if(type == ConsumeLiquid.class){
                         return (T)fromJson(ConsumeLiquid.class, "{liquid: " + split[0] + ", amount: " + split[1] + "}");
                     }
+                }
+
+                //try to load DrawBlock by instantiating it
+                if(type == DrawBlock.class && jsonData.isString()){
+                    return Reflect.make("mindustry.world.draw." + Strings.capitalize(jsonData.asString()));
                 }
 
                 if(Content.class.isAssignableFrom(type)){
@@ -236,8 +241,8 @@ public class ContentParser{
 
                 readFields(block, value, true);
 
-                if(block.size > BuildBlock.maxSize){
-                    throw new IllegalArgumentException("Blocks cannot be larger than " + BuildBlock.maxSize);
+                if(block.size > ConstructBlock.maxSize){
+                    throw new IllegalArgumentException("Blocks cannot be larger than " + ConstructBlock.maxSize);
                 }
 
                 //add research tech node
@@ -368,7 +373,7 @@ public class ContentParser{
 
     private void init(){
         for(ContentType type : ContentType.all){
-            Array<Content> arr = Vars.content.getBy(type);
+            Seq<Content> arr = Vars.content.getBy(type);
             if(!arr.isEmpty()){
                 Class<?> c = arr.first().getClass();
                 //get base content class, skipping intermediates
@@ -457,9 +462,9 @@ public class ContentParser{
         if(t.getMessage() != null && t instanceof JsonParseException){
             builder.append("[accent][[JsonParse][] ").append(":\n").append(t.getMessage());
         }else if(t instanceof NullPointerException){
-            builder.append(Strings.parseException(t, true));
+            builder.append(Strings.neatError(t));
         }else{
-            Array<Throwable> causes = Strings.getCauses(t);
+            Seq<Throwable> causes = Strings.getCauses(t);
             for(Throwable e : causes){
                 builder.append("[accent][[").append(e.getClass().getSimpleName().replace("Exception", ""))
                 .append("][] ")
@@ -475,7 +480,7 @@ public class ContentParser{
         return first != null ? first : Vars.content.getByName(type, currentMod.name + "-" + name);
     }
 
-    private <T> T make(Class<T> type){
+    <T> T make(Class<T> type){
         try{
             Constructor<T> cons = type.getDeclaredConstructor();
             cons.setAccessible(true);
@@ -510,7 +515,7 @@ public class ContentParser{
         }
     }
 
-    private Object field(Class<?> type, JsonValue value){
+    Object field(Class<?> type, JsonValue value){
         return field(type, value.asString());
     }
 
@@ -525,7 +530,7 @@ public class ContentParser{
         }
     }
 
-    private Object fieldOpt(Class<?> type, JsonValue value){
+    Object fieldOpt(Class<?> type, JsonValue value){
         try{
             return type.getField(value.asString()).get(null);
         }catch(Exception e){
@@ -533,10 +538,10 @@ public class ContentParser{
         }
     }
 
-    private void checkNullFields(Object object){
+    void checkNullFields(Object object){
         if(object instanceof Number || object instanceof String || toBeParsed.contains(object)) return;
 
-        parser.getFields(object.getClass()).values().toArray().each(field -> {
+        parser.getFields(object.getClass()).values().toSeq().each(field -> {
             try{
                 if(field.field.getType().isPrimitive()) return;
 
@@ -554,7 +559,7 @@ public class ContentParser{
         readFields(object, jsonMap);
     }
 
-    private void readFields(Object object, JsonValue jsonMap){
+    void readFields(Object object, JsonValue jsonMap){
         toBeParsed.remove(object);
         Class type = object.getClass();
         ObjectMap<String, FieldMetadata> fields = parser.getFields(type);
@@ -588,7 +593,7 @@ public class ContentParser{
     }
 
     /** Tries to resolve a class from a list of potential class names. */
-    private <T> Class<T> resolve(String base, String... potentials){
+    <T> Class<T> resolve(String base, String... potentials){
         if(!base.isEmpty() && Character.isLowerCase(base.charAt(0))) base = Strings.capitalize(base);
 
         for(String type : potentials){

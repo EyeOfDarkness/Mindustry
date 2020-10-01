@@ -19,14 +19,14 @@ public class LiquidVoid extends Block{
         bars.remove("liquid");
     }
 
-    public class LiquidVoidEntity extends TileEntity{
+    public class LiquidVoidBuild extends Building{
         @Override
-        public boolean acceptLiquid(Tilec source, Liquid liquid, float amount){
-            return true;
+        public boolean acceptLiquid(Building source, Liquid liquid, float amount){
+            return enabled;
         }
 
         @Override
-        public void handleLiquid(Tilec source, Liquid liquid, float amount){
+        public void handleLiquid(Building source, Liquid liquid, float amount){
         }
     }
 

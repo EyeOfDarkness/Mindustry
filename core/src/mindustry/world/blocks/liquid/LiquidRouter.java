@@ -7,9 +7,11 @@ public class LiquidRouter extends LiquidBlock{
 
     public LiquidRouter(String name){
         super(name);
+
+        noUpdateDisabled = true;
     }
 
-    public class LiquidRouterEntity extends LiquidBlockEntity{
+    public class LiquidRouterBuild extends LiquidBuild{
         @Override
         public void updateTile(){
             if(liquids.total() > 0.01f){
@@ -18,7 +20,7 @@ public class LiquidRouter extends LiquidBlock{
         }
 
         @Override
-        public boolean acceptLiquid(Tilec source, Liquid liquid, float amount){
+        public boolean acceptLiquid(Building source, Liquid liquid, float amount){
             return liquids.get(liquid) + amount < liquidCapacity && (liquids.current() == liquid || liquids.currentAmount() < 0.2f);
         }
     }

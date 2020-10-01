@@ -1,6 +1,5 @@
 package mindustry;
 
-import arc.Application.*;
 import arc.*;
 import arc.assets.*;
 import arc.files.*;
@@ -37,10 +36,12 @@ public class Vars implements Loadable{
     public static boolean loadLocales = true;
     /** Whether the logger is loaded. */
     public static boolean loadedLogger = false, loadedFileLogger = false;
+    /** Maximum extra padding around deployment schematics. */
+    public static final int maxLoadoutSchematicPad = 5;
     /** Maximum schematic size.*/
     public static final int maxSchematicSize = 32;
     /** All schematic base64 starts with this string.*/
-    public static final String schematicBaseStart ="bXNjaAB";
+    public static final String schematicBaseStart ="bXNjaA";
     /** IO buffer size. */
     public static final int bufferSize = 8192;
     /** global charset, since Android doesn't support the Charsets class */
@@ -59,10 +60,12 @@ public class Vars implements Loadable{
     public static final String serverJsonURL = "https://raw.githubusercontent.com/Anuken/Mindustry/master/servers.json";
     /** URL to the JSON file containing all the BE servers. Only queried in BE. */
     public static final String serverJsonBeURL = "https://raw.githubusercontent.com/Anuken/Mindustry/master/servers_be.json";
+    /** URL to the JSON file containing all the BE servers. Only queried in the V6 alpha (will be removed once it's out). */
+    public static final String serverJsonV6URL = "https://raw.githubusercontent.com/Anuken/Mindustry/master/servers_v6.json";
     /** URL of the github issue report template.*/
-    public static final String reportIssueURL = "https://github.com/Anuken/Mindustry/issues/new?template=bug_report.md";
+    public static final String reportIssueURL = "https://github.com/Anuken/Mindustry/issues/new?labels=bug&template=bug_report.md";
     /** list of built-in servers.*/
-    public static final Array<String> defaultServers = Array.with();
+    public static final Seq<String> defaultServers = Seq.with();
     /** maximum distance between mine and core that supports automatic transferring */
     public static final float mineTransferRange = 220f;
     /** max chat message length */
@@ -77,18 +80,24 @@ public class Vars implements Loadable{
     public static final float miningRange = 70f;
     /** range for building */
     public static final float buildingRange = 220f;
-    /** duration of one turn in ticks */
-    public static final float turnDuration = 5 * Time.toMinutes;
+    /** range for moving items */
+    public static final float itemTransferRange = 220f;
+    /** duration of time between turns in ticks */
+    public static final float turnDuration = 20 * Time.toMinutes;
+    /** turns needed to destroy a sector completely */
+    public static final float sectorDestructionTurns = 3f;
     /** min armor fraction damage; e.g. 0.05 = at least 5% damage */
-    public static final float minArmorDamage = 0.05f;
+    public static final float minArmorDamage = 0.1f;
     /** launch animation duration */
     public static final float launchDuration = 140f;
+    /** size of tiles in units */
+    public static final int tilesize = 8;
+    /** size of one tile payload (^2) */
+    public static final float tilePayload = tilesize * tilesize;
     /** tile used in certain situations, instead of null */
     public static Tile emptyTile;
     /** for map generator dialog */
     public static boolean updateEditorOnChange = false;
-    /** size of tiles in units */
-    public static final int tilesize = 8;
     /** all choosable player colors in join/host dialog */
     public static final Color[] playerColors = {
         Color.valueOf("82759a"),
@@ -134,6 +143,9 @@ public class Vars implements Loadable{
     public static boolean clearSectors = false;
     /** whether any light rendering is enabled */
     public static boolean enableLight = true;
+    /** Whether to draw shadows of blocks at map edges and static blocks.
+     * Do not change unless you know exactly what you are doing.*/
+    public static boolean enableDarkness = true;
     /** application data directory, equivalent to {@link Settings#getDataDirectory()} */
     public static Fi dataDirectory;
     /** data subdirectory used for screenshots */
@@ -168,7 +180,6 @@ public class Vars implements Loadable{
     public static Net net;
     public static ContentLoader content;
     public static GameState state;
-    public static GlobalData data;
     public static EntityCollisions collisions;
     public static DefaultWaves defaultWaves;
     public static mindustry.audio.LoopControl loops;
@@ -194,7 +205,7 @@ public class Vars implements Loadable{
     public static NetServer netServer;
     public static NetClient netClient;
 
-    public static Playerc player;
+    public static Player player;
 
     @Override
     public void loadAsync(){
@@ -254,11 +265,10 @@ public class Vars implements Loadable{
         bases = new BaseRegistry();
 
         state = new GameState();
-        data = new GlobalData();
 
-        mobile = Core.app.getType() == ApplicationType.Android || Core.app.getType() == ApplicationType.iOS || testMobile;
-        ios = Core.app.getType() == ApplicationType.iOS;
-        android = Core.app.getType() == ApplicationType.Android;
+        mobile = Core.app.isMobile() || testMobile;
+        ios = Core.app.isIOS();
+        android = Core.app.isAndroid();
 
         modDirectory.mkdirs();
 
@@ -272,7 +282,7 @@ public class Vars implements Loadable{
         String[] tags = {"[green][D][]", "[royal][I][]", "[yellow][W][]", "[scarlet][E][]", ""};
         String[] stags = {"&lc&fb[D]", "&lg&fb[I]", "&ly&fb[W]", "&lr&fb[E]", ""};
 
-        Array<String> logBuffer = new Array<>();
+        Seq<String> logBuffer = new Seq<>();
         Log.setLogger((level, text) -> {
             String result = text;
             String rawText = Log.format(stags[level.ordinal()] + "&fr " + text);
@@ -283,7 +293,13 @@ public class Vars implements Loadable{
             if(!headless && (ui == null || ui.scriptfrag == null)){
                 logBuffer.add(result);
             }else if(!headless){
-                ui.scriptfrag.addMessage(result);
+                if(!OS.isWindows){
+                    for(String code : ColorCodes.values){
+                        result = result.replace(code, "");
+                    }
+                }
+
+                ui.scriptfrag.addMessage(Log.removeCodes(result));
             }
         });
 
@@ -324,6 +340,7 @@ public class Vars implements Loadable{
 
         settings.defaults("locale", "default", "blocksync", true);
         keybinds.setDefaults(Binding.values());
+        settings.setAutosave(false);
         settings.load();
 
         Scl.setProduct(settings.getInt("uiscale", 100) / 100f);

@@ -28,25 +28,27 @@ import java.util.*;
 import static mindustry.Vars.*;
 
 public class BlockInventoryFragment extends Fragment{
-    private final static float holdWithdraw = 20f;
-    private final static float holdShrink = 120f;
+    private static final float holdWithdraw = 20f;
+    private static final float holdShrink = 120f;
 
-    private Table table = new Table();
-    private Tilec tile;
-    private float holdTime = 0f, emptyTime;
-    private boolean holding;
-    private float[] shrinkHoldTimes = new float[content.items().size];
-    private Item lastItem;
+    Table table = new Table();
+    Building tile;
+    float holdTime = 0f, emptyTime;
+    boolean holding;
+    float[] shrinkHoldTimes = new float[content.items().size];
+    Item lastItem;
 
     {
         Events.on(WorldLoadEvent.class, e -> hide());
     }
 
     @Remote(called = Loc.server, targets = Loc.both, forward = true)
-    public static void requestItem(Playerc player, Tilec tile, Item item, int amount){
-        if(player == null || tile == null || !tile.interactable(player.team())) return;
-        amount = Mathf.clamp(amount, 0, player.unit().itemCapacity());
+    public static void requestItem(Player player, Building tile, Item item, int amount){
+        if(player == null || tile == null || !tile.interactable(player.team()) || !player.within(tile, buildingRange)) return;
+        amount = Math.min(player.unit().maxAccepted(item), amount);
         int fa = amount;
+
+        if(amount == 0) return;
 
         if(net.server() && (!Units.canInteract(player, tile) ||
             !netServer.admins.allowAction(player, ActionType.withdrawItem, tile.tile(), action -> {
@@ -59,25 +61,25 @@ public class BlockInventoryFragment extends Fragment{
         player.unit().addItem(item, removed);
         Events.fire(new WithdrawEvent(tile, player, item, amount));
         for(int j = 0; j < Mathf.clamp(removed / 3, 1, 8); j++){
-            Time.run(j * 3f, () -> Call.transferItemEffect(item, tile.x(), tile.y(), player.unit()));
+            Time.run(j * 3f, () -> Call.transferItemEffect(item, tile.x, tile.y, player.unit()));
         }
     }
 
     @Override
     public void build(Group parent){
-        table.setName("inventory");
+        table.name = "inventory";
         table.setTransform(true);
         parent.setTransform(true);
         parent.addChild(table);
     }
 
-    public void showFor(Tilec t){
+    public void showFor(Building t){
         if(this.tile == t){
             hide();
             return;
         }
         this.tile = t;
-        if(tile == null || !tile.block().isAccessible() || tile.items().total() == 0)
+        if(tile == null || !tile.block.isAccessible() || tile.items.total() == 0)
             return;
         rebuild(true);
     }
@@ -90,7 +92,7 @@ public class BlockInventoryFragment extends Fragment{
             table.clearListeners();
             table.update(null);
         }), Actions.visible(false));
-        table.touchable(Touchable.disabled);
+        table.touchable = Touchable.disabled;
         tile = null;
     }
 
@@ -103,23 +105,23 @@ public class BlockInventoryFragment extends Fragment{
         table.clearChildren();
         table.clearActions();
         table.background(Tex.inventory);
-        table.touchable(Touchable.enabled);
+        table.touchable = Touchable.enabled;
         table.update(() -> {
 
-            if(state.isMenu() || tile == null || !tile.isValid() || !tile.block().isAccessible() || emptyTime >= holdShrink){
+            if(state.isMenu() || tile == null || !tile.isValid() || !tile.block.isAccessible() || emptyTime >= holdShrink){
                 hide();
             }else{
-                if(tile.items().total() == 0){
-                    emptyTime += Time.delta();
+                if(tile.items.total() == 0){
+                    emptyTime += Time.delta;
                 }else{
                     emptyTime = 0f;
                 }
 
                 if(holding && lastItem != null){
-                    holdTime += Time.delta();
+                    holdTime += Time.delta;
 
                     if(holdTime >= holdWithdraw){
-                        int amount = Math.min(tile.items().get(lastItem), player.unit().maxAccepted(lastItem));
+                        int amount = Math.min(tile.items.get(lastItem), player.unit().maxAccepted(lastItem));
                         Call.requestItem(player, tile, lastItem, amount);
                         holding = false;
                         holdTime = 0f;
@@ -129,18 +131,18 @@ public class BlockInventoryFragment extends Fragment{
                 }
 
                 updateTablePosition();
-                if(tile.block().hasItems){
+                if(tile.block.hasItems){
                     boolean dirty = false;
                     if(shrinkHoldTimes.length != content.items().size) shrinkHoldTimes = new float[content.items().size];
 
                     for(int i = 0; i < content.items().size; i++){
-                        boolean has = tile.items().has(content.item(i));
+                        boolean has = tile.items.has(content.item(i));
                         boolean had = container.contains(i);
                         if(has){
                             shrinkHoldTimes[i] = 0f;
                             dirty |= !had;
                         }else if(had){
-                            shrinkHoldTimes[i] += Time.delta();
+                            shrinkHoldTimes[i] += Time.delta;
                             dirty |= shrinkHoldTimes[i] >= holdShrink;
                         }
                     }
@@ -155,15 +157,15 @@ public class BlockInventoryFragment extends Fragment{
         table.margin(4f);
         table.defaults().size(8 * 5).pad(4f);
 
-        if(tile.block().hasItems){
+        if(tile.block.hasItems){
 
             for(int i = 0; i < content.items().size; i++){
                 Item item = content.item(i);
-                if(!tile.items().has(item)) continue;
+                if(!tile.items.has(item)) continue;
 
                 container.add(i);
 
-                Boolp canPick = () -> player.unit().acceptsItem(item) && !state.isPaused();
+                Boolp canPick = () -> player.unit().acceptsItem(item) && !state.isPaused() && player.within(tile, itemTransferRange);
 
                 HandCursorListener l = new HandCursorListener();
                 l.setEnabled(canPick);
@@ -172,14 +174,14 @@ public class BlockInventoryFragment extends Fragment{
                     if(tile == null || !tile.isValid()){
                         return "";
                     }
-                    return round(tile.items().get(item));
+                    return round(tile.items.get(item));
                 });
                 image.addListener(l);
 
                 image.addListener(new InputListener(){
                     @Override
                     public boolean touchDown(InputEvent event, float x, float y, int pointer, KeyCode button){
-                        if(!canPick.get() || tile == null || !tile.isValid() || tile.items() == null || !tile.items().has(item)) return false;
+                        if(!canPick.get() || tile == null || !tile.isValid() || tile.items == null || !tile.items.has(item)) return false;
                         int amount = Math.min(1, player.unit().maxAccepted(item));
                         if(amount > 0){
                             Call.requestItem(player, tile, item, amount);
@@ -209,7 +211,7 @@ public class BlockInventoryFragment extends Fragment{
 
         updateTablePosition();
 
-        table.visible(true);
+        table.visible = true;
 
         if(actions){
             table.setScale(0f, 1f);
@@ -231,7 +233,7 @@ public class BlockInventoryFragment extends Fragment{
     }
 
     private void updateTablePosition(){
-        Vec2 v = Core.input.mouseScreen(tile.x() + tile.block().size * tilesize / 2f, tile.y() + tile.block().size * tilesize / 2f);
+        Vec2 v = Core.input.mouseScreen(tile.x + tile.block.size * tilesize / 2f, tile.y + tile.block.size * tilesize / 2f);
         table.pack();
         table.setPosition(v.x, v.y, Align.topLeft);
     }

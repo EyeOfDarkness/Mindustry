@@ -23,17 +23,17 @@ public class LoadRegionProcessor extends BaseProcessor{
             .addParameter(tname("mindustry.ctype.MappableContent"), "content")
             .addModifiers(Modifier.STATIC, Modifier.PUBLIC);
 
-        ObjectMap<Stype, Array<Svar>> fieldMap = new ObjectMap<>();
+        ObjectMap<Stype, Seq<Svar>> fieldMap = new ObjectMap<>();
 
         for(Svar field : fields(Load.class)){
             if(!field.is(Modifier.PUBLIC)){
                 err("@LoadRegion field must be public", field);
             }
 
-            fieldMap.get(field.enclosingType(), Array::new).add(field);
+            fieldMap.get(field.enclosingType(), Seq::new).add(field);
         }
 
-        for(Entry<Stype, Array<Svar>> entry : fieldMap){
+        for(Entry<Stype, Seq<Svar>> entry : fieldMap){
             method.beginControlFlow("if(content instanceof $T)", entry.key.tname());
 
             for(Svar field : entry.value){
@@ -103,11 +103,11 @@ public class LoadRegionProcessor extends BaseProcessor{
 
     private String parse(String value){
         value = '"' + value + '"';
+        value = value.replace("@size", "\" + ((mindustry.world.Block)content).size + \"");
         value = value.replace("@", "\" + content.name + \"");
         value = value.replace("#1", "\" + INDEX0 + \"");
         value = value.replace("#2", "\" + INDEX1 + \"");
         value = value.replace("#", "\" + INDEX0 + \"");
-        value = value.replace("$size", "\" + ((mindustry.world.Block)content).size + \"");
         return value;
     }
 

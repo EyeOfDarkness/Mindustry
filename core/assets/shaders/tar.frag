@@ -1,7 +1,4 @@
-#ifdef GL_ES
-precision highp float;
-precision mediump int;
-#endif
+#define HIGHP
 
 #define NSCALE 180.0 / 2.0
 
@@ -12,11 +9,10 @@ uniform vec2 u_campos;
 uniform vec2 u_resolution;
 uniform float u_time;
 
-varying vec4 v_color;
-varying vec2 v_texCoord;
+varying vec2 v_texCoords;
 
 void main(){
-    vec2 c = v_texCoord.xy;
+    vec2 c = v_texCoords.xy;
     vec2 coords = vec2(c.x * u_resolution.x + u_campos.x, c.y * u_resolution.y + u_campos.y);
 
     float btime = u_time / 8000.0;
@@ -24,7 +20,7 @@ void main(){
     vec4 color = texture2D(u_texture, c);
 
     if(!(noise > 0.54 && noise < 0.58)){
-        color.rgb *= 0.6;
+        color.rgb *= vec3(0.6, 0.6, 0.7);
     }
 
     gl_FragColor = color;

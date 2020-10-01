@@ -13,6 +13,7 @@ import mindustry.entities.*;
 import mindustry.game.EventType.*;
 import mindustry.gen.*;
 import mindustry.graphics.*;
+import mindustry.logic.*;
 import mindustry.type.*;
 import mindustry.ui.*;
 import mindustry.world.consumers.*;
@@ -60,27 +61,29 @@ public class NuclearReactor extends PowerGenerator{
     @Override
     public void setBars(){
         super.setBars();
-        bars.add("heat", entity -> new Bar("bar.heat", Pal.lightOrange, () -> ((NuclearReactorEntity)entity).heat));
+        bars.add("heat", (NuclearReactorBuild entity) -> new Bar("bar.heat", Pal.lightOrange, () -> entity.heat));
     }
 
-    public class NuclearReactorEntity extends GeneratorEntity{
+    public class NuclearReactorBuild extends GeneratorBuild{
         public float heat;
 
         @Override
         public void updateTile(){
             ConsumeLiquid cliquid = consumes.get(ConsumeType.liquid);
-            Item item = consumes.<ConsumeItems>get(ConsumeType.item).items[0].item;
+            Item item = consumes.getItem().items[0].item;
 
             int fuel = items.get(item);
             float fullness = (float)fuel / itemCapacity;
             productionEfficiency = fullness;
 
-            if(fuel > 0){
+            if(fuel > 0 && enabled){
                 heat += fullness * heating * Math.min(delta(), 4f);
 
                 if(timer(timerFuel, itemDuration / timeScale())){
                     consume();
                 }
+            }else{
+                productionEfficiency = 0f;
             }
 
             Liquid liquid = cliquid.liquid;
@@ -108,6 +111,12 @@ public class NuclearReactor extends PowerGenerator{
         }
 
         @Override
+        public double sense(LAccess sensor){
+            if(sensor == LAccess.heat) return heat;
+            return super.sense(sensor);
+        }
+
+        @Override
         public void onDestroyed(){
             super.onDestroyed();
 
@@ -117,7 +126,7 @@ public class NuclearReactor extends PowerGenerator{
 
             if((fuel < 5 && heat < 0.5f) || !state.rules.reactorExplosions) return;
 
-            Effects.shake(6f, 16f, x, y);
+            Effect.shake(6f, 16f, x, y);
             Fx.nuclearShockwave.at(x, y);
             for(int i = 0; i < 6; i++){
                 Time.run(Mathf.random(40), () -> Fx.nuclearcloud.at(x, y));
@@ -143,7 +152,7 @@ public class NuclearReactor extends PowerGenerator{
         @Override
         public void drawLight(){
             float fract = productionEfficiency;
-            Drawf.light(x, y, (90f + Mathf.absin(5, 5f)) * fract, Tmp.c1.set(lightColor).lerp(Color.scarlet, heat), 0.6f * fract);
+            Drawf.light(team, x, y, (90f + Mathf.absin(5, 5f)) * fract, Tmp.c1.set(lightColor).lerp(Color.scarlet, heat), 0.6f * fract);
         }
 
         @Override
@@ -159,7 +168,7 @@ public class NuclearReactor extends PowerGenerator{
 
             if(heat > flashThreshold){
                 float flash = 1f + ((heat - flashThreshold) / (1f - flashThreshold)) * 5.4f;
-                flash += flash * Time.delta();
+                flash += flash * Time.delta;
                 Draw.color(Color.red, Color.yellow, Mathf.absin(flash, 9f, 1f));
                 Draw.alpha(0.6f);
                 Draw.rect(lightsRegion, x, y);

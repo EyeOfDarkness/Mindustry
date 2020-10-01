@@ -5,6 +5,7 @@ import arc.graphics.*;
 import arc.math.*;
 import mindustry.content.*;
 import mindustry.entities.*;
+import mindustry.game.*;
 import mindustry.graphics.*;
 import mindustry.world.*;
 import mindustry.world.meta.*;
@@ -21,7 +22,7 @@ public class ThermalGenerator extends PowerGenerator{
     public void setStats(){
         super.setStats();
 
-        stats.add(BlockStat.tiles, attribute);
+        stats.add(BlockStat.tiles, attribute, floating);
     }
 
     @Override
@@ -30,14 +31,18 @@ public class ThermalGenerator extends PowerGenerator{
     }
 
     @Override
-    public boolean canPlaceOn(Tile tile){
+    public boolean canPlaceOn(Tile tile, Team team){
         //make sure there's heat at this location
         return tile.getLinkedTilesAs(this, tempTiles).sumf(other -> other.floor().attributes.get(attribute)) > 0.01f;
     }
 
-    public class ThermalGeneratorEntity extends GeneratorEntity{
+    public class ThermalGeneratorBuild extends GeneratorBuild{
+        public float sum;
+
         @Override
         public void updateTile(){
+            productionEfficiency = sum + attribute.env();
+
             if(productionEfficiency > 0.1f && Mathf.chance(0.05 * delta())){
                 generateEffect.at(x + Mathf.range(3f), y + Mathf.range(3f));
             }
@@ -45,21 +50,14 @@ public class ThermalGenerator extends PowerGenerator{
 
         @Override
         public void drawLight(){
-            Drawf.light(x, y, (40f + Mathf.absin(10f, 5f)) * productionEfficiency * size, Color.scarlet, 0.4f);
+            Drawf.light(team, x, y, (40f + Mathf.absin(10f, 5f)) * productionEfficiency * size, Color.scarlet, 0.4f);
         }
 
         @Override
         public void onProximityAdded(){
             super.onProximityAdded();
 
-            productionEfficiency = sumAttribute(attribute, tile.x, tile.y);
-        }
-
-        @Override
-        public float getPowerProduction(){
-            //in this case, productionEfficiency means 'total heat'
-            //thus, it may be greater than 1.0
-            return powerProduction * productionEfficiency;
+            sum = sumAttribute(attribute, tile.x, tile.y);
         }
     }
 }

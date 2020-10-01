@@ -4,6 +4,8 @@ import arc.func.*;
 import arc.math.*;
 import arc.math.geom.*;
 import arc.math.geom.QuadTree.*;
+import arc.scene.ui.*;
+import arc.scene.ui.layout.*;
 import arc.struct.*;
 import arc.util.ArcAnnotate.*;
 import mindustry.annotations.Annotations.*;
@@ -11,25 +13,22 @@ import mindustry.content.*;
 import mindustry.game.*;
 import mindustry.gen.*;
 import mindustry.type.*;
+import mindustry.ui.*;
 import mindustry.world.blocks.environment.*;
 
 import static mindustry.Vars.*;
 
-public class Tile implements Position, QuadTreeObject{
-    static final ObjectSet<Tilec> tileSet = new ObjectSet<>();
+public class Tile implements Position, QuadTreeObject, Displayable{
+    static final ObjectSet<Building> tileSet = new ObjectSet<>();
 
-    /** Tile traversal cost. */
-    public short cost = 1;
-    /** Tile entity, usually null. */
-    public @Nullable Tilec entity;
-    public short x, y;
-    /** Extra data. Used for dumping. */
+    /** Extra data for very specific blocks. */
     public byte data;
+    /** Tile entity, usually null. */
+    public @Nullable Building build;
+    public short x, y;
     protected @NonNull Block block;
     protected @NonNull Floor floor;
     protected @NonNull Floor overlay;
-    /** Rotation, 0-3. Not guaranteed to be in any specific range. */
-    protected byte rotation;
     protected boolean changing = false;
 
     public Tile(int x, int y){
@@ -46,7 +45,7 @@ public class Tile implements Position, QuadTreeObject{
         this.block = wall;
 
         //update entity and create it if needed
-        changeEntity(Team.derelict, wall::newEntity);
+        changeEntity(Team.derelict, wall::newBuilding, 0);
         changed();
     }
 
@@ -104,9 +103,11 @@ public class Tile implements Position, QuadTreeObject{
         return -1;
     }
 
+    /** Convenience method that returns the building of this tile with a cast.
+     * Method name is shortened to prevent conflict. */
     @SuppressWarnings("unchecked")
-    public <T extends TileEntity> T ent(){
-        return (T)entity;
+    public <T extends Building> T bc(){
+        return (T)build;
     }
 
     public float worldx(){
@@ -118,11 +119,11 @@ public class Tile implements Position, QuadTreeObject{
     }
 
     public float drawx(){
-        return block().offset() + worldx();
+        return block().offset + worldx();
     }
 
     public float drawy(){
-        return block().offset() + worldy();
+        return block().offset + worldy();
     }
 
     public boolean isDarkened(){
@@ -147,44 +148,55 @@ public class Tile implements Position, QuadTreeObject{
     }
 
     public Team team(){
-        return entity == null ? Team.derelict : entity.team();
+        return build == null ? Team.derelict : build.team;
     }
 
     public void setTeam(Team team){
-        if(entity != null){
-            entity.team(team);
+        if(build != null){
+            build.team(team);
         }
     }
 
     public boolean isCenter(){
-        return entity == null || entity.tile() == this;
+        return build == null || build.tile() == this;
     }
 
-    public byte getTeamID(){
+    public int centerX(){
+        return build == null ? x : build.tile.x;
+    }
+
+    public int centerY(){
+        return build == null ? y : build.tile.y;
+    }
+
+    public int getTeamID(){
         return team().id;
     }
 
     public void setBlock(@NonNull Block type, Team team, int rotation){
-        setBlock(type, team, rotation, type::newEntity);
+        setBlock(type, team, rotation, type::newBuilding);
     }
 
-    public void setBlock(@NonNull Block type, Team team, int rotation, Prov<Tilec> entityprov){
+    public void setBlock(@NonNull Block type, Team team, int rotation, Prov<Building> entityprov){
         changing = true;
 
-        this.block = type;
-        this.rotation = rotation == 0 ? 0 : (byte)Mathf.mod(rotation, 4);
-        preChanged();
-        changeEntity(team, entityprov);
+        if(type.isStatic() || this.block.isStatic()){
+            recache();
+        }
 
-        if(entity != null){
-            entity.team(team);
+        this.block = type;
+        preChanged();
+        changeEntity(team, entityprov, (byte)Mathf.mod(rotation, 4));
+
+        if(build != null){
+            build.team(team);
         }
 
         //set up multiblock
         if(block.isMultiblock()){
             int offsetx = -(block.size - 1) / 2;
             int offsety = -(block.size - 1) / 2;
-            Tilec entity = this.entity;
+            Building entity = this.build;
             Block block = this.block;
 
             //two passes: first one clears, second one sets
@@ -203,7 +215,7 @@ public class Tile implements Position, QuadTreeObject{
                                 }else{
                                     //second pass: assign changed data
                                     //assign entity and type to blocks, so they act as proxies for this one
-                                    other.entity = entity;
+                                    other.build = entity;
                                     other.block = block;
                                 }
                             }
@@ -212,7 +224,7 @@ public class Tile implements Position, QuadTreeObject{
                 }
             }
 
-            this.entity = entity;
+            this.build = entity;
             this.block = block;
         }
 
@@ -234,8 +246,8 @@ public class Tile implements Position, QuadTreeObject{
         this.overlay = (Floor)Blocks.air;
 
         recache();
-        if(entity != null){
-            entity.onProximityUpdate();
+        if(build != null){
+            build.onProximityUpdate();
         }
     }
 
@@ -279,6 +291,11 @@ public class Tile implements Position, QuadTreeObject{
     }
 
     /** set()-s this tile, except it's synced across the network */
+    public void setNet(Block block){
+        Call.setTile(this, block, Team.derelict, 0);
+    }
+
+    /** set()-s this tile, except it's synced across the network */
     public void setNet(Block block, Team team, int rotation){
         Call.setTile(this, block, team, rotation);
     }
@@ -291,18 +308,6 @@ public class Tile implements Position, QuadTreeObject{
     /** set()-s this tile, except it's synced across the network */
     public void setFloorNet(Block floor){
         setFloorNet(floor, Blocks.air);
-    }
-
-    public byte rotation(){
-        return rotation;
-    }
-
-    public int rotdeg(){
-        return rotation * 90;
-    }
-
-    public void rotation(int rotation){
-        this.rotation = (byte)rotation;
     }
 
     public short overlayID(){
@@ -321,7 +326,7 @@ public class Tile implements Position, QuadTreeObject{
         setOverlay(content.block(ore));
     }
 
-    public void setOverlay(Block block){
+    public void setOverlay(@NonNull Block block){
         this.overlay = (Floor)block;
 
         recache();
@@ -341,20 +346,16 @@ public class Tile implements Position, QuadTreeObject{
     }
 
     public boolean solid(){
-        return block.solid || (entity != null && entity.checkSolid());
+        return block.solid || (build != null && build.checkSolid());
     }
 
     public boolean breakable(){
         return block.destructible || block.breakable || block.update;
     }
 
-    public boolean isEnemyCheat(){
-        return team() == state.rules.waveTeam && state.rules.enemyCheat;
-    }
-
     /**
-     * Returns the list of all tiles linked to this multiblock, or just itself if it's not a multiblock.
-     * This array contains all linked tiles, including this tile itself.
+     * Iterates through the list of all tiles linked to this multiblock, or just itself if it's not a multiblock.
+     * The result contains all linked tiles, including this tile itself.
      */
     public void getLinkedTiles(Cons<Tile> cons){
         if(block.isMultiblock()){
@@ -376,7 +377,7 @@ public class Tile implements Position, QuadTreeObject{
      * Returns the list of all tiles linked to this multiblock.
      * This array contains all linked tiles, including this tile itself.
      */
-    public Array<Tile> getLinkedTiles(Array<Tile> tmpArray){
+    public Seq<Tile> getLinkedTiles(Seq<Tile> tmpArray){
         tmpArray.clear();
         getLinkedTiles(tmpArray::add);
         return tmpArray;
@@ -384,9 +385,9 @@ public class Tile implements Position, QuadTreeObject{
 
     /**
      * Returns the list of all tiles linked to this multiblock if it were this block.
-     * This array contains all linked tiles, including this tile itself.
+     * The result contains all linked tiles, including this tile itself.
      */
-    public Array<Tile> getLinkedTilesAs(Block block, Array<Tile> tmpArray){
+    public Seq<Tile> getLinkedTilesAs(Block block, Seq<Tile> tmpArray){
         tmpArray.clear();
         if(block.isMultiblock()){
             int offsetx = -(block.size - 1) / 2;
@@ -428,29 +429,12 @@ public class Tile implements Position, QuadTreeObject{
         return null;
     }
 
-    public Tilec getNearbyEntity(int rotation){
-        if(rotation == 0) return world.ent(x + 1, y);
-        if(rotation == 1) return world.ent(x, y + 1);
-        if(rotation == 2) return world.ent(x - 1, y);
-        if(rotation == 3) return world.ent(x, y - 1);
+    public Building getNearbyEntity(int rotation){
+        if(rotation == 0) return world.build(x + 1, y);
+        if(rotation == 1) return world.build(x, y + 1);
+        if(rotation == 2) return world.build(x - 1, y);
+        if(rotation == 3) return world.build(x, y - 1);
         return null;
-    }
-
-    // ▲ ▲ ▼ ▼ ◀ ▶ ◀ ▶ B A
-    public @Nullable Tilec front(){
-        return getNearbyEntity((rotation + 4) % 4);
-    }
-
-    public @Nullable Tilec right(){
-        return getNearbyEntity((rotation + 3) % 4);
-    }
-
-    public @Nullable Tilec back(){
-        return getNearbyEntity((rotation + 2) % 4);
-    }
-
-    public @Nullable Tilec left(){
-        return getNearbyEntity((rotation + 1) % 4);
     }
 
     public boolean interactable(Team team){
@@ -461,54 +445,20 @@ public class Tile implements Position, QuadTreeObject{
         return overlay == Blocks.air || overlay.itemDrop == null ? floor.itemDrop : overlay.itemDrop;
     }
 
-    public void updateOcclusion(){
-        cost = 1;
-        boolean occluded = false;
-
-        //check for occlusion
-        for(int i = 0; i < 8; i++){
-            Point2 point = Geometry.d8[i];
-            Tile tile = world.tile(x + point.x, y + point.y);
-            if(tile != null && tile.floor.isLiquid){
-                cost += 4;
-            }
-            if(tile != null && tile.solid()){
-                occluded = true;
-                break;
-            }
-        }
-
-        if(occluded){
-            cost += 2;
-        }
-
-        if(block.synthetic() && solid()){
-            cost += Mathf.clamp(block.health / 6f, 0, 1000);
-        }
-
-        if(floor.isLiquid){
-            cost += 10;
-        }
-
-        if(floor.drownTime > 0){
-            cost += 70;
-        }
-
-        if(cost < 0){
-            cost = Byte.MAX_VALUE;
-        }
+    public int staticDarkness(){
+        return block.solid && block.fillsTile && !block.synthetic() ? data : 0;
     }
 
     protected void preChanged(){
-        if(entity != null){
+        if(build != null){
             //only call removed() for the center block - this only gets called once.
-            entity.onRemoved();
-            entity.removeFromProximity();
+            build.onRemoved();
+            build.removeFromProximity();
 
             //remove this tile's dangling entities
-            if(entity.block().isMultiblock()){
-                int cx = entity.tileX(), cy = entity.tileY();
-                int size = entity.block().size;
+            if(build.block.isMultiblock()){
+                int cx = build.tileX(), cy = build.tileY();
+                int size = build.block.size;
                 int offsetx = -(size - 1) / 2;
                 int offsety = -(size - 1) / 2;
                 for(int dx = 0; dx < size; dx++){
@@ -517,12 +467,11 @@ public class Tile implements Position, QuadTreeObject{
                         if(other != null){
                             //reset entity and block *manually* - thus, preChanged() will not be called anywhere else, for multiblocks
                             if(other != this){ //do not remove own entity so it can be processed in changed()
-                                other.entity = null;
+                                other.build = null;
                                 other.block = Blocks.air;
 
                                 //manually call changed event
-                                other.updateOcclusion();
-                                world.notifyChanged(other);
+                                other.fireChanged();
                             }
                         }
                     }
@@ -537,56 +486,69 @@ public class Tile implements Position, QuadTreeObject{
         }
     }
 
-    protected void changeEntity(Team team, Prov<Tilec> entityprov){
-        if(entity != null){
-            int size = entity.block().size;
-            entity.remove();
-            entity = null;
+    protected void changeEntity(Team team, Prov<Building> entityprov, int rotation){
+        if(build != null){
+            int size = build.block.size;
+            build.remove();
+            build = null;
 
             //update edge entities
             tileSet.clear();
 
             for(Point2 edge : Edges.getEdges(size)){
-                Tilec other = world.ent(x + edge.x, y + edge.y);
+                Building other = world.build(x + edge.x, y + edge.y);
                 if(other != null){
                     tileSet.add(other);
                 }
             }
 
             //update proximity, since multiblock was just removed
-            for(Tilec t : tileSet){
+            for(Building t : tileSet){
                 t.updateProximity();
             }
         }
 
-        if(block.hasEntity()){
-            entity = entityprov.get().init(this, team, block.update);
+        if(block.hasBuilding()){
+            build = entityprov.get().init(this, team, block.update && !state.isEditor(), rotation);
         }
     }
 
     protected void changed(){
         if(!world.isGenerating()){
-            if(entity != null){
-                entity.updateProximity();
+            if(build != null){
+                build.updateProximity();
             }else{
                 //since the entity won't update proximity for us, update proximity for all nearby tiles manually
                 for(Point2 p : Geometry.d4){
-                    Tilec tile = world.ent(x + p.x, y + p.y);
-                    if(tile != null && !tile.tile().changing){
+                    Building tile = world.build(x + p.x, y + p.y);
+                    if(tile != null && !tile.tile.changing){
                         tile.onProximityUpdate();
                     }
                 }
             }
         }
 
-        updateOcclusion();
-
-        world.notifyChanged(this);
+        fireChanged();
 
         //recache when static block is added
         if(block.isStatic()){
             recache();
         }
+    }
+
+    protected void fireChanged(){
+        world.notifyChanged(this);
+    }
+
+    @Override
+    public void display(Table table){
+        Block toDisplay = overlay.itemDrop != null ? overlay : floor;
+
+        table.table(t -> {
+            t.left();
+            t.add(new Image(toDisplay.getDisplayIcon(this))).size(8 * 4);
+            t.labelWrap(toDisplay.getDisplayName(this)).left().width(190f).padLeft(5);
+        }).growX().left();
     }
 
     @Override
@@ -601,7 +563,7 @@ public class Tile implements Position, QuadTreeObject{
 
     @Override
     public String toString(){
-        return floor.name + ":" + block.name + ":" + overlay + "[" + x + "," + y + "] " + "entity=" + (entity == null ? "null" : (entity.getClass().getSimpleName())) + ":" + team();
+        return floor.name + ":" + block.name + ":" + overlay + "[" + x + "," + y + "] " + "entity=" + (build == null ? "null" : (build.getClass().getSimpleName())) + ":" + team();
     }
 
     //remote utility methods
@@ -623,19 +585,19 @@ public class Tile implements Position, QuadTreeObject{
     }
 
     @Remote(called = Loc.server, unreliable = true)
-    public static void onTileDamage(Tile tile, float health){
-        if(tile.entity != null){
-            tile.entity.health(health);
+    public static void tileDamage(Building build, float health){
+        if(build == null) return;
 
-            if(tile.entity.damaged()){
-                indexer.notifyTileDamaged(tile.entity);
-            }
+        build.health = health;
+
+        if(build.damaged()){
+            indexer.notifyTileDamaged(build);
         }
     }
 
     @Remote(called = Loc.server)
-    public static void onTileDestroyed(Tile tile){
-        if(tile.entity == null) return;
-        tile.entity.killed();
+    public static void tileDestroyed(Building build){
+        if(build == null) return;
+        build.killed();
     }
 }

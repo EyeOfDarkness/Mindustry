@@ -3,6 +3,8 @@ package mindustry.annotations.impl;
 import arc.files.*;
 import arc.scene.style.*;
 import arc.struct.*;
+import arc.util.*;
+import arc.util.io.*;
 import arc.util.serialization.*;
 import com.squareup.javapoet.*;
 import mindustry.annotations.Annotations.*;
@@ -32,6 +34,17 @@ public class AssetsProcess extends BaseProcessor{
         MethodSpec.Builder icload = MethodSpec.methodBuilder("load").addModifiers(Modifier.PUBLIC, Modifier.STATIC);
         String resources = rootDirectory + "/core/assets-raw/sprites/ui";
         Jval icons = Jval.read(Fi.get(rootDirectory + "/core/assets-raw/fontgen/config.json").readString());
+
+        ObjectMap<String, String> texIcons = new OrderedMap<>();
+        PropertiesUtils.load(texIcons, Fi.get(rootDirectory + "/core/assets/icons/icons.properties").reader());
+
+        texIcons.each((key, val) -> {
+            String[] split = val.split("\\|");
+            String name = Strings.kebabToCamel(split[1]).replace("Medium", "").replace("Icon", "");
+            if(SourceVersion.isKeyword(name) || name.equals("char")) name = name + "i";
+
+            ichtype.addField(FieldSpec.builder(char.class, name, Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL).initializer("(char)" + key).build());
+        });
 
         ictype.addField(FieldSpec.builder(ParameterizedTypeName.get(ObjectMap.class, String.class, TextureRegionDrawable.class),
                 "icons", Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL).initializer("new ObjectMap<>()").build());
@@ -69,7 +82,7 @@ public class AssetsProcess extends BaseProcessor{
         });
 
         for(Element elem : elements){
-            Array.with(((TypeElement)elem).getEnclosedElements()).each(e -> e.getKind() == ElementKind.FIELD, field -> {
+            Seq.with(((TypeElement)elem).getEnclosedElements()).each(e -> e.getKind() == ElementKind.FIELD, field -> {
                 String fname = field.getSimpleName().toString();
                 if(fname.startsWith("default")){
                     loadStyles.addStatement("arc.Core.scene.addStyle(" + field.asType().toString() + ".class, mindustry.ui.Styles." + fname + ")");

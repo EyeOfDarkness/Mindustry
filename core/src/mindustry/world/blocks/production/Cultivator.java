@@ -31,11 +31,11 @@ public class Cultivator extends GenericCrafter{
     @Override
     public void setBars(){
         super.setBars();
-        bars.add("multiplier", entity -> new Bar(() ->
+        bars.add("multiplier", (CultivatorBuild entity) -> new Bar(() ->
         Core.bundle.formatFloat("bar.efficiency",
-        ((((CultivatorEntity)entity).boost + 1f) * ((CultivatorEntity)entity).warmup) * 100f, 1),
+        ((entity.boost + 1f + attribute.env()) * entity.warmup) * 100f, 1),
         () -> Pal.ammo,
-        () -> ((CultivatorEntity)entity).warmup));
+        () -> entity.warmup));
     }
 
     @Override
@@ -51,11 +51,11 @@ public class Cultivator extends GenericCrafter{
     }
 
     @Override
-    public TextureRegion[] generateIcons(){
-        return new TextureRegion[]{Core.atlas.find(name), Core.atlas.find(name + "-top"),};
+    public TextureRegion[] icons(){
+        return new TextureRegion[]{region, topRegion};
     }
 
-    public class CultivatorEntity extends GenericCrafterEntity{
+    public class CultivatorBuild extends GenericCrafterBuild{
         public float warmup;
         public float boost;
 
@@ -70,9 +70,7 @@ public class Cultivator extends GenericCrafter{
         public void draw(){
             Draw.rect(region, x, y);
 
-            Draw.color(plantColor);
-            Draw.alpha(warmup);
-            Draw.rect(middleRegion, x, y);
+            Drawf.liquid(middleRegion, x, y, warmup, plantColor);
 
             Draw.color(bottomColor, plantColorLight, warmup);
 
@@ -101,7 +99,7 @@ public class Cultivator extends GenericCrafter{
 
         @Override
         public float getProgressIncrease(float baseTime){
-            return super.getProgressIncrease(baseTime) * (1f + boost);
+            return super.getProgressIncrease(baseTime) * (1f + boost + attribute.env());
         }
 
         @Override

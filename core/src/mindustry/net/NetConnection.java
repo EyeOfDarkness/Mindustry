@@ -1,6 +1,5 @@
 package mindustry.net;
 
-import arc.math.geom.*;
 import arc.struct.*;
 import arc.util.ArcAnnotate.*;
 import arc.util.*;
@@ -12,22 +11,21 @@ import mindustry.net.Packets.*;
 
 import java.io.*;
 
-import static mindustry.Vars.netServer;
+import static mindustry.Vars.*;
 
 public abstract class NetConnection{
     public final String address;
     public String uuid = "AAAAAAAA", usid = uuid;
     public boolean mobile, modclient;
-    public @Nullable Playerc player;
-    public @Nullable Unitc lastUnit;
-    public Vec2 lastPosition = new Vec2();
+    public @Nullable Player player;
+    public boolean kicked = false;
 
-    /** ID of last recieved client snapshot. */
-    public int lastRecievedClientSnapshot = -1;
-    /** Timestamp of last recieved snapshot. */
-    public long lastRecievedClientTime;
+    /** ID of last received client snapshot. */
+    public int lastReceivedClientSnapshot = -1;
+    /** Timestamp of last received snapshot. */
+    public long lastReceivedClientTime;
     /** Build requests that have been recently rejected. This is cleared every snapshot. */
-    public Array<BuildRequest> rejectedRequests = new Array<>();
+    public Seq<BuildPlan> rejectedRequests = new Seq<>();
 
     public boolean hasConnected, hasBegunConnecting, hasDisconnected;
     public float viewWidth, viewHeight, viewX, viewY;
@@ -38,6 +36,8 @@ public abstract class NetConnection{
 
     /** Kick with a special, localized reason. Use this if possible. */
     public void kick(KickReason reason){
+        if(kicked) return;
+
         Log.info("Kicking connection @; Reason: @", address, reason.name());
 
         if((reason == KickReason.kick || reason == KickReason.banned || reason == KickReason.vote)){
@@ -46,11 +46,12 @@ public abstract class NetConnection{
             info.lastKicked = Math.max(Time.millis() + 30 * 1000, info.lastKicked);
         }
 
-        Call.onKick(this, reason);
+        Call.kick(this, reason);
 
         Time.runTask(2f, this::close);
 
         netServer.admins.save();
+        kicked = true;
     }
 
     /** Kick with an arbitrary reason. */
@@ -60,17 +61,18 @@ public abstract class NetConnection{
 
     /** Kick with an arbitrary reason, and a kick duration in milliseconds. */
     public void kick(String reason, int kickDuration){
+        if(kicked) return;
+
         Log.info("Kicking connection @; Reason: @", address, reason.replace("\n", " "));
 
-        PlayerInfo info = netServer.admins.getInfo(uuid);
-        info.timesKicked++;
-        info.lastKicked = Math.max(Time.millis() + kickDuration, info.lastKicked);
+        netServer.admins.handleKicked(uuid, address, kickDuration);
 
-        Call.onKick(this, reason);
+        Call.kick(this, reason);
 
         Time.runTask(2f, this::close);
 
         netServer.admins.save();
+        kicked = true;
     }
 
     public boolean isConnected(){
