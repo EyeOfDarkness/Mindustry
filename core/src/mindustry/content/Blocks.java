@@ -757,14 +757,14 @@ public class Blocks implements ContentList{
 
         plastaniumWall = new Wall("plastanium-wall"){{
             requirements(Category.defense, with(Items.plastanium, 5, Items.metaglass, 2));
-            health = 190 * wallHealthMultiplier;
+            health = 130 * wallHealthMultiplier;
             insulated = true;
             absorbLasers = true;
         }};
 
         plastaniumWallLarge = new Wall("plastanium-wall-large"){{
             requirements(Category.defense, ItemStack.mult(plastaniumWall.requirements, 4));
-            health = 190 * wallHealthMultiplier * 4;
+            health = 130 * wallHealthMultiplier * 4;
             size = 2;
             insulated = true;
             absorbLasers = true;
@@ -947,7 +947,7 @@ public class Blocks implements ContentList{
             requirements(Category.distribution, with(Items.plastanium, 1, Items.thorium, 1, Items.metaglass, 1));
             health = 180;
             speed = 0.08f;
-            displayedSpeed = 10f;
+            displayedSpeed = 11f;
         }};
 
         junction = new Junction("junction"){{
@@ -1350,17 +1350,20 @@ public class Blocks implements ContentList{
             requirements(Category.effect, with(Items.titanium, 250, Items.thorium, 125));
             size = 3;
             itemCapacity = 1000;
+            group = BlockGroup.storage;
         }};
 
         container = new StorageBlock("container"){{
             requirements(Category.effect, with(Items.titanium, 100));
             size = 2;
             itemCapacity = 300;
+            group = BlockGroup.storage;
         }};
 
         unloader = new Unloader("unloader"){{
             requirements(Category.effect, with(Items.titanium, 25, Items.silicon, 30));
             speed = 6f;
+            group = BlockGroup.transportation;
         }};
 
         //endregion
@@ -1526,7 +1529,7 @@ public class Blocks implements ContentList{
             force = 4.5f;
             scaledForce = 5.5f;
             range = 110f;
-            damage = 0.1f;
+            damage = 0.4f;
             health = 160 * size * size;
             rotateSpeed = 10;
 
@@ -1580,13 +1583,13 @@ public class Blocks implements ContentList{
             requirements(Category.turret, with(Items.silicon, 130, Items.thorium, 80, Items.phasefabric, 40));
 
             health = 250 * size * size;
-            range = 140f;
+            range = 160f;
             hasPower = true;
             consumes.powerCond(8f, (PointDefenseBuild b) -> b.target != null);
             size = 2;
             shootLength = 5f;
             bulletDamage = 25f;
-            reloadTime = 10f;
+            reloadTime = 9f;
         }};
 
         tsunami = new LiquidTurret("tsunami"){{
@@ -1701,7 +1704,7 @@ public class Blocks implements ContentList{
                 trailEffect = Fx.instTrail;
                 despawnEffect = Fx.instBomb;
                 trailSpacing = 20f;
-                damage = 1250;
+                damage = 1350;
                 tileDamageMultiplier = 0.5f;
                 speed = brange;
                 hitShake = 6f;
@@ -1728,7 +1731,7 @@ public class Blocks implements ContentList{
             health = 150 * size * size;
             consumes.add(new ConsumeLiquidFilter(liquid -> liquid.temperature <= 0.5f && liquid.flammability < 0.1f, 2f)).update(false).optional(true, true);
 
-            consumes.powerCond(10f, (TurretBuild entity) -> entity.target != null || (entity.logicControlled() && entity.logicShooting));
+            consumes.powerCond(10f, TurretBuild::isActive);
         }};
 
         spectre = new ItemTurret("spectre"){{
