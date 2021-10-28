@@ -26,7 +26,7 @@ public class Weapon implements Cloneable{
     static int sequenceNum = 0;
     
     /** displayed weapon region */
-    public String name = "";
+    public String name;
     /** bullet shot */
     public BulletType bullet = Bullets.standardCopper;
     /** shell ejection effect */
@@ -97,6 +97,8 @@ public class Weapon implements Cloneable{
     public boolean parentizeEffects;
     /** internal value used for alternation - do not change! */
     public int otherSide = -1;
+    /** draw Z offset relative to the default value */
+    public float layerOffset = 0f;
     /** sound used for shooting */
     public Sound shootSound = Sounds.pew;
     /** sound used for weapons that have a delay */
@@ -117,6 +119,8 @@ public class Weapon implements Cloneable{
     public Func<Weapon, WeaponMount> mountType = WeaponMount::new;
     /** status effect duration when shot */
     public float shootStatusDuration = 60f * 5f;
+    /** whether this weapon should fire when its owner dies */
+    public boolean shootOnDeath = false;
 
     public Weapon(String name){
         this.name = name;
@@ -153,12 +157,16 @@ public class Weapon implements Cloneable{
             Draw.rect(outlineRegion,
             wx, wy,
             outlineRegion.width * Draw.scl * -Mathf.sign(flipSprite),
-            region.height * Draw.scl,
+            outlineRegion.height * Draw.scl,
             weaponRotation);
         }
     }
     
     public void draw(Unit unit, WeaponMount mount){
+        //apply layer offset, roll it back at the end
+        float z = Draw.z();
+        Draw.z(z + layerOffset);
+
         float
         rotation = unit.rotation - 90,
         weaponRotation  = rotation + (rotate ? mount.rotation : 0),
@@ -194,13 +202,15 @@ public class Weapon implements Cloneable{
             Draw.blend();
             Draw.color();
         }
+
+        Draw.z(z);
     }
 
     public void update(Unit unit, WeaponMount mount){
         boolean can = unit.canShoot();
         float lastReload = mount.reload;
         mount.reload = Math.max(mount.reload - Time.delta * unit.reloadMultiplier, 0);
-        mount.recoil = Math.max(mount.recoil - (Time.delta * recoil * unit.reloadMultiplier) / recoilTime, 0);
+        mount.recoil = Mathf.approachDelta(mount.recoil, 0, (Math.abs(recoil) * unit.reloadMultiplier) / recoilTime);
 
         //rotate if applicable
         if(rotate && (mount.rotate || mount.shoot) && can){
